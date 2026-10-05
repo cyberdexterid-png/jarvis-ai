@@ -99,12 +99,28 @@ def do_action(name):
         _press_vk(VK[name])
 
 
-def run(stop_event=None):
+def find_camera(max_index=3):
+    """Return first working camera index, or None. Some laptops use 1 or 2."""
+    if not GESTURE_AVAILABLE:
+        return None
+    for i in range(max_index):
+        try:
+            cap = cv2.VideoCapture(i)
+            ok = cap.isOpened()
+            cap.release()
+            if ok:
+                return i
+        except Exception:
+            continue
+    return None
+
+
+def run(stop_event=None, cam_index=0):
     """Main loop. Returns True if it ran, False if camera/deps missing."""
     if not GESTURE_AVAILABLE:
         print("[gesture deps missing: pip install opencv-python mediapipe pyautogui]")
         return False
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(cam_index)
     if not cap.isOpened():
         print("[camera not found]")
         return False
@@ -120,6 +136,7 @@ def run(stop_event=None):
     last_click = 0.0
     last_action = 0.0
     print("[CYBER AI gesture control ON] " + HELP)
+    cv2.namedWindow("CYBER AI - Gesture Control", cv2.WINDOW_NORMAL)
 
     try:
         while True:
