@@ -243,11 +243,11 @@
 
   <section class="right">
     <div id="log"></div>
-    <div id="heardTicker">🎤 mic standby — click anywhere, allow mic, then say "CYBER" + command</div>
+    <div id="heardTicker">🎤 mic standby — click anywhere, allow mic, then speak your command</div>
     <div class="inputbar">
       <button class="btn" id="langBtn" title="voice language">EN</button>
       <span class="pill" id="micStatus" title="microphone">🎤 ...</span>
-      <input id="text" placeholder="Type a command, or say 'CYBER ...'" autocomplete="off">
+      <input id="text" placeholder="Type a command, or just speak" autocomplete="off">
       <button class="btn" id="send">SEND</button>
     </div>
   </section>
@@ -275,8 +275,8 @@
 
     <div class="tabpage" id="t-voice">
       <label class="setline">
-        <input type="checkbox" id="wakeToggle" checked>
-        REQUIRE WAKE WORD "CYBER" <span style="opacity:.7">(off = every phrase is a command)</span>
+        <input type="checkbox" id="wakeToggle">
+        WAKE WORD "CYBER" <span style="opacity:.7">(on = must say "CYBER" first)</span>
       </label>
       <label class="setline">
         <input type="checkbox" id="voiceReplyToggle" checked>
@@ -415,7 +415,7 @@ function updateMicUI(){
   micStatus.style.color = recOn ? 'var(--cyan)' : 'var(--magenta)';
 }
 // wake word on/off (saved)
-let wakeRequired = localStorage.getItem('cyber_wake') !== 'off';
+let wakeRequired = localStorage.getItem('cyber_wake') === 'on';
 const wakeToggle = document.getElementById('wakeToggle');
 wakeToggle.checked = wakeRequired;
 wakeToggle.onchange = e => {
@@ -497,6 +497,8 @@ updateMicUI();
 // click the pill to retry if the camera failed to start)
 const gesturePill = document.getElementById('gesturePill');
 gesturePill.style.cursor = 'pointer';
+const camFeed = document.getElementById('camFeed');
+const camMsg = document.getElementById('camMsg');
 async function refreshGesture(){
   try{
     const r = await fetch('/api/gesture', {method:'POST',
@@ -506,6 +508,10 @@ async function refreshGesture(){
     gesturePill.title = (s.reason || '') + ' (click to retry camera)';
     gesturePill.style.borderColor = s.running ? 'var(--cyan)' : 'var(--muted)';
     gesturePill.style.color = s.running ? 'var(--cyan)' : 'var(--muted)';
+    if(!s.running){
+      camFeed.style.display = 'none'; camMsg.style.display = 'block';
+      camMsg.textContent = 'camera offline' + (s.reason ? ': ' + s.reason : '');
+    }
   }catch(e){ gesturePill.textContent = '🖐 ...'; }
 }
 async function retryCamera(){
@@ -522,8 +528,6 @@ refreshGesture();
 setInterval(refreshGesture, 5000);
 
 // ---------- camera preview (frames streamed from the Python gesture thread) ----------
-const camFeed = document.getElementById('camFeed');
-const camMsg = document.getElementById('camMsg');
 camFeed.onload = () => { camFeed.style.display = 'block'; camMsg.style.display = 'none'; };
 camFeed.onerror = () => {
   camFeed.style.display = 'none'; camMsg.style.display = 'block';
@@ -575,15 +579,18 @@ async function refreshBrain(){
   try{
     const r = await fetch('/api/status');
     const s = await r.json();
-    if(s.brain){
+    if(s.last_error){
+      brainBadge.textContent = 'BRAIN: ⚠️ ' + s.last_error;
+      brainBadge.style.color = 'var(--magenta)';
+    } else if(s.brain){
       brainBadge.textContent = 'BRAIN: ● CONNECTED';
       brainBadge.style.color = 'var(--cyan)';
     } else if(s.has_key && !s.sdk){
       brainBadge.textContent = 'BRAIN: ○ KEY SAVED, but google-genai missing → run: pip install -r requirements.txt';
       brainBadge.style.color = 'var(--magenta)';
     } else if(s.has_key){
-      brainBadge.textContent = 'BRAIN: ○ KEY SAVED, connection failed — check the key';
-      brainBadge.style.color = 'var(--magenta)';
+      brainBadge.textContent = 'BRAIN: ○ KEY SAVED — save again to verify it';
+      brainBadge.style.color = 'var(--muted)';
     } else {
       brainBadge.textContent = 'BRAIN: ○ OFFLINE (no key)';
       brainBadge.style.color = 'var(--muted)';
@@ -598,7 +605,8 @@ modal.onclick = e => { if(e.target === modal) modal.classList.remove('open'); };
 document.getElementById('saveKey').onclick = async () => {
   const key = document.getElementById('apiKey').value.trim();
   if(!key){ sysMsg('Paste a key first.'); return; }
-  brainBadge.textContent = 'BRAIN: saving...';
+  brainBadge.textContent = 'BRAIN: verifying key...';
+  sysMsg('Testing key with a real API call...');
   try{
     const r = await fetch('/api/config', {method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -608,14 +616,14 @@ document.getElementById('saveKey').onclick = async () => {
     await refreshBrain();
     if(!s.ok){
       sysMsg('Save FAILED: ' + (s.error || 'unknown error'));
-    } else if(s.brain){
-      sysMsg('API key saved — full AI brain online. 🧠');
+    } else if(s.key_valid){
+      sysMsg('API key VERIFIED — full AI brain online. 🧠');
     } else if(!s.sdk){
       sysMsg('Key saved ✓ but google-genai package missing → run: pip install -r requirements.txt');
     } else {
-      sysMsg('Key saved, but connection failed — check the key is correct.');
+      sysMsg('⚠️ Key REJECTED: ' + (s.key_error || 'check the key and try again.'));
     }
-  }catch(e){ sysMsg('Could not reach the server. Is Jarvis running?'); }
+  }catch(e){ sysMsg('Could not reach the server. Is CYBER AI running?'); }
 };
 refreshBrain();
 
@@ -699,62 +707,146 @@ const faceState = { speaking:false, mouth:0, t:0 };
 function themeCol(n, fb){
   return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb;
 }
+function rr(x, y, w, h, r){
+  fx.beginPath();
+  fx.moveTo(x+r, y);
+  fx.arcTo(x+w, y, x+w, y+h, r);
+  fx.arcTo(x+w, y+h, x, y+h, r);
+  fx.arcTo(x, y+h, x, y, r);
+  fx.arcTo(x, y, x+w, y, r);
+  fx.closePath();
+}
+
 function drawFace(){
   const t = faceState.t += 0.06;
   const W = faceC.width, H = faceC.height, cx = W/2, cy = H/2;
   fx.clearRect(0, 0, W, H);
   const col = themeCol('--cyan', '#00ff41');
   const mag = themeCol('--magenta', '#00e5ff');
-  // head ring
+  const hw = 45, hh = 57;
+
+  // outer HUD ring, slow rotate
   fx.save();
-  fx.strokeStyle = col; fx.lineWidth = 2.5;
-  fx.shadowColor = col; fx.shadowBlur = 16;
-  fx.beginPath(); fx.arc(cx, cy, 56, 0, Math.PI*2); fx.stroke();
+  fx.strokeStyle = col; fx.globalAlpha = 0.32; fx.lineWidth = 1.5;
+  fx.setLineDash([6, 9]); fx.lineDashOffset = -t*8;
+  fx.beginPath(); fx.arc(cx, cy, 68, 0, Math.PI*2); fx.stroke();
   fx.restore();
-  // ring ticks
+
+  // ---- brushed-metal head ----
+  const hg = fx.createLinearGradient(cx-hw, 0, cx+hw, 0);
+  hg.addColorStop(0, '#0a0d12');
+  hg.addColorStop(0.16, '#2b323c');
+  hg.addColorStop(0.5, '#4d5866');
+  hg.addColorStop(0.84, '#2b323c');
+  hg.addColorStop(1, '#0a0d12');
   fx.save();
-  fx.strokeStyle = col; fx.globalAlpha = 0.5; fx.lineWidth = 2;
-  for(let k = 0; k < 12; k++){
-    const a = t*0.4 + k * Math.PI/6;
-    fx.beginPath();
-    fx.moveTo(cx + Math.cos(a)*62, cy + Math.sin(a)*62);
-    fx.lineTo(cx + Math.cos(a)*67, cy + Math.sin(a)*67);
-    fx.stroke();
+  rr(cx-hw, cy-hh, hw*2, hh*2, 20);
+  fx.fillStyle = hg;
+  fx.shadowColor = col; fx.shadowBlur = 18;
+  fx.fill();
+  fx.shadowBlur = 0;
+  fx.globalAlpha = 0.08; fx.strokeStyle = '#ffffff'; fx.lineWidth = 1;
+  for(let sIdx = 0; sIdx < 5; sIdx++){
+    const yy = cy-hh+12+sIdx*22;
+    fx.beginPath(); fx.moveTo(cx-hw+8, yy); fx.lineTo(cx+hw-8, yy); fx.stroke();
   }
+  fx.globalAlpha = 1;
+  fx.strokeStyle = 'rgba(255,255,255,.35)'; fx.lineWidth = 1.5;
+  fx.beginPath(); fx.moveTo(cx-hw+16, cy-hh+2);
+  fx.quadraticCurveTo(cx, cy-hh-3, cx+hw-16, cy-hh+2); fx.stroke();
+  fx.strokeStyle = col; fx.globalAlpha = 0.6; fx.lineWidth = 1.5;
+  rr(cx-hw, cy-hh, hw*2, hh*2, 20); fx.stroke();
   fx.restore();
-  // eyes (blink)
-  const blink = (t % 4.2 < 0.14) ? 0.12 : 1;
-  const wide = faceState.speaking ? 1.25 : 1;
+
+  // ---- forehead sensor (blinks) ----
   fx.save();
-  fx.fillStyle = col; fx.shadowColor = col; fx.shadowBlur = 14;
-  for(const ex of [cx-25, cx+25]){
+  fx.fillStyle = '#05070b';
+  fx.beginPath(); fx.arc(cx, cy-hh+15, 6.5, 0, Math.PI*2); fx.fill();
+  const sensOn = Math.sin(t*3.2) > -0.2;
+  fx.fillStyle = sensOn ? mag : '#43101f';
+  fx.shadowColor = mag; fx.shadowBlur = sensOn ? 10 : 0;
+  fx.beginPath(); fx.arc(cx, cy-hh+15, 3.2, 0, Math.PI*2); fx.fill();
+  fx.restore();
+
+  // ---- visor recess ----
+  fx.save();
+  rr(cx-37, cy-32, 74, 27, 13);
+  fx.fillStyle = '#04060a'; fx.fill();
+  fx.strokeStyle = 'rgba(255,255,255,.14)'; fx.lineWidth = 1; fx.stroke();
+  fx.restore();
+
+  // ---- glowing eyes ----
+  const blink = (t % 4.2 < 0.14) ? 0.15 : 1;
+  const pulse = 0.72 + 0.28*Math.sin(t*2.4);
+  const eyeOpen = faceState.speaking ? 1.2 : 1;
+  for(const ex of [cx-18, cx+18]){
+    const g = fx.createRadialGradient(ex, cy-18.5, 1, ex, cy-18.5, 14);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.35, col);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    fx.save();
+    fx.globalAlpha = blink;
+    fx.fillStyle = g;
+    fx.shadowColor = col; fx.shadowBlur = 15*pulse;
     fx.beginPath();
-    fx.ellipse(ex, cy-14, 12*wide, Math.max(1.6, 9*blink), 0, 0, Math.PI*2);
+    fx.ellipse(ex, cy-18.5, 11.5, Math.max(1.6, 8.5*blink*eyeOpen), 0, 0, Math.PI*2);
     fx.fill();
+    fx.restore();
   }
-  fx.restore();
-  // mouth — animates in real time while speaking
+
+  // ---- mouth grille: slats spread in real time while speaking ----
   const target = faceState.speaking
     ? 0.3 + 0.7*Math.abs(Math.sin(t*11)*0.62 + Math.sin(t*5.3+1.7)*0.38)
     : 0.05;
   faceState.mouth += (target - faceState.mouth) * 0.45;
   const m = faceState.mouth;
+  const mw = 36, mh = 8 + m*22, my = cy+34;
   fx.save();
-  fx.fillStyle = 'rgba(0,0,0,.55)';
-  fx.strokeStyle = mag; fx.lineWidth = 2;
-  fx.shadowColor = mag; fx.shadowBlur = 10;
-  fx.beginPath();
-  fx.ellipse(cx, cy+30, 28, 3 + m*20, 0, 0, Math.PI*2);
-  fx.fill(); fx.stroke();
+  rr(cx-mw/2-7, my-mh/2-5, mw+14, mh+10, 8);
+  fx.fillStyle = '#03050a'; fx.fill();
+  if(m > 0.1){
+    fx.globalAlpha = Math.min(0.85, m);
+    fx.fillStyle = mag; fx.shadowColor = mag; fx.shadowBlur = 16;
+    rr(cx-mw/2-4, my-mh/2-2, mw+8, mh+4, 6); fx.fill();
+    fx.globalAlpha = 1; fx.shadowBlur = 0;
+  }
+  const slats = 5;
+  for(let sIdx = 0; sIdx < slats; sIdx++){
+    const yy = my - mh/2 + (mh/(slats-1))*sIdx;
+    const sg = fx.createLinearGradient(cx-mw/2, 0, cx+mw/2, 0);
+    sg.addColorStop(0, '#141a21'); sg.addColorStop(0.5, '#66727f'); sg.addColorStop(1, '#141a21');
+    fx.fillStyle = sg;
+    fx.fillRect(cx-mw/2, yy-1.6, mw, 3.2);
+    fx.fillStyle = col; fx.globalAlpha = 0.75;
+    fx.fillRect(cx-mw/2, yy+1.6, mw, 1);
+    fx.globalAlpha = 1;
+  }
   fx.restore();
-  // forehead circuit line
+
+  // ---- cheek vents ----
   fx.save();
-  fx.strokeStyle = col; fx.globalAlpha = 0.45; fx.lineWidth = 1.5;
-  fx.beginPath();
-  fx.moveTo(cx-34, cy-38); fx.lineTo(cx-14, cy-52); fx.lineTo(cx+14, cy-52); fx.lineTo(cx+34, cy-38);
-  fx.stroke();
+  fx.strokeStyle = 'rgba(255,255,255,.16)'; fx.lineWidth = 2; fx.lineCap = 'round';
+  for(const sx of [-1, 1]){
+    for(let v = 0; v < 3; v++){
+      fx.beginPath();
+      fx.moveTo(cx + sx*37, cy+6+v*8);
+      fx.lineTo(cx + sx*31, cy+6+v*8);
+      fx.stroke();
+    }
+  }
+  fx.restore();
+
+  // ---- corner screws ----
+  fx.save();
+  for(const [sx, sy] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+    fx.fillStyle = '#7b8794';
+    fx.beginPath(); fx.arc(cx+sx*(hw-10), cy+sy*(hh-10), 2.6, 0, Math.PI*2); fx.fill();
+    fx.fillStyle = '#2b323c';
+    fx.fillRect(cx+sx*(hw-10)-1.5, cy+sy*(hh-10)-0.5, 3, 1);
+  }
   fx.restore();
 }
+
 setInterval(drawFace, 50);
 
 // boot overlay animation, then reveal
@@ -780,7 +872,9 @@ setInterval(drawFace, 50);
     'Voice systems: EN + සිං online. Wake word: "CYBER".',
     'Hand tracking: auto-starting...', 'All systems nominal.'];
   for(const l of lines){ sysMsg(l); await new Promise(r => setTimeout(r, 350)); }
-  const hello = 'Systems online. Say "CYBER" then your command — I understand English and Sinhala.';
+  const hello = wakeRequired
+    ? 'Systems online. Say "CYBER" then your command — I understand English and Sinhala.'
+    : 'Systems online. Just speak your command — I understand English and Sinhala.';
   addMsg('jarvis', hello); speakReply(hello);
 })();
 </script>
