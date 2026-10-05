@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>J.A.R.V.I.S. — Local Interface</title>
+<title>CYBER AI — Local Interface</title>
 <style>
   :root{
-    --bg:#04070d; --panel:#0a1420; --cyan:#00e5ff; --cyan-dim:#0e5a6e;
-    --magenta:#ff2fd6; --text:#c9f6ff; --muted:#5b7f93;
+    --bg:#020604; --panel:#071009; --cyan:#00ff41; --cyan-dim:#0e6e2a;
+    --magenta:#00e5ff; --text:#d2ffdd; --muted:#5b8f68;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%}
@@ -17,6 +17,7 @@
     overflow:hidden; display:flex; flex-direction:column;
   }
   /* background layers */
+  #matrix{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5}
   .grid-bg{position:fixed;inset:0;pointer-events:none;z-index:0;
     background-image:linear-gradient(rgba(0,229,255,.05) 1px,transparent 1px),
                      linear-gradient(90deg,rgba(0,229,255,.05) 1px,transparent 1px);
@@ -146,24 +147,26 @@
 </head>
 <body>
 <div class="grid-bg"></div>
+<canvas id="matrix"></canvas>
 <div class="glow-orb orb1"></div>
 <div class="glow-orb orb2"></div>
 <div class="scanlines"></div>
 
 <div id="boot">
-  <div class="b-title">J.A.R.V.I.S.</div>
-  <div class="b-sub">STARK INDUSTRIES // MARK VII INTERFACE</div>
+  <div class="b-title">CYBER AI</div>
+  <div class="b-sub">NEURAL INTERFACE // ROOT ACCESS</div>
   <div id="bootBarWrap"><div id="bootBar"></div></div>
   <div class="b-sub" id="bootMsg">INITIALIZING...</div>
 </div>
 
 <header>
   <div class="brand">
-    <h1>J.A.R.V.I.S.</h1>
-    <small>JUST A RATHER VERY INTELLIGENT SYSTEM</small>
+    <h1>CYBER AI</h1>
+    <small>// ROOT ACCESS GRANTED — HAND + VOICE CONTROL</small>
   </div>
   <div class="hud-right">
     <span class="pill local">● LOCAL</span>
+    <span class="pill" id="gesturePill" title="hand tracking">🖐 ...</span>
     <span class="pill" id="statusPill">● ONLINE</span>
     <span id="clock">--:--</span>
     <button class="btn" id="gearBtn" title="settings">⚙</button>
@@ -199,13 +202,13 @@
     <div id="log"></div>
     <div class="inputbar">
       <button class="btn" id="langBtn" title="voice language">EN</button>
-      <button class="btn" id="mic" title="voice input">🎤</button>
-      <input id="text" placeholder="Type a command or speak..." autocomplete="off">
+      <span class="pill" id="micStatus" title="microphone">🎤 ...</span>
+      <input id="text" placeholder="Type a command, or say 'CYBER ...'" autocomplete="off">
       <button class="btn" id="send">SEND</button>
     </div>
   </section>
 </main>
-<footer>SECURE LOCAL LINK &nbsp;//&nbsp; NO CLOUD &nbsp;//&nbsp; POWERED BY JARVIS v2</footer>
+<footer>SECURE LOCAL LINK &nbsp;//&nbsp; NO CLOUD &nbsp;//&nbsp; CYBER AI v6.0</footer>
 
 <div id="settingsModal">
   <div class="modal-box">
@@ -239,7 +242,7 @@ function setStatus(s){
 function addMsg(who, txt){
   const d = document.createElement('div');
   d.className = 'msg ' + who;
-  const label = who === 'jarvis' ? 'JARVIS' : who === 'you' ? 'YOU' : '';
+  const label = who === 'jarvis' ? 'CYBER AI' : who === 'you' ? 'YOU' : '';
   d.innerHTML = (label ? `<span class="who">${label}</span>` : '') +
     txt.replace(/</g,'&lt;').replace(/\n/g,'<br>');
   log.appendChild(d); log.scrollTop = log.scrollHeight;
@@ -265,7 +268,7 @@ async function sendText(t){
   addMsg('you', t);
   setStatus('THINKING');
   const typing = document.createElement('div');
-  typing.className = 'typing'; typing.textContent = 'JARVIS is thinking...';
+  typing.className = 'typing'; typing.textContent = 'CYBER AI is thinking...';
   log.appendChild(typing); log.scrollTop = log.scrollHeight;
   try{
     const r = await fetch('/api/command', {
@@ -294,23 +297,80 @@ document.getElementById('langBtn').onclick = function(){
   sysMsg('Voice language: ' + (recogLang === 'en-US' ? 'English' : 'Sinhala'));
 };
 
-// mic via browser speech recognition (free, built-in)
-let rec = null, recOn = false;
-const micBtn = document.getElementById('mic');
-micBtn.onclick = () => {
+// ALWAYS-ON mic with wake word "CYBER" (no button needed).
+// Starts on first click anywhere (browser rule), then stays alive forever.
+let rec = null, recOn = false, micWanted = true;
+const micStatus = document.getElementById('micStatus');
+function updateMicUI(){
+  micStatus.textContent = !micWanted ? '🎤 BLOCKED'
+    : recOn ? '🎤 LISTENING' : '🎤 STARTING...';
+  micStatus.style.borderColor = recOn ? 'var(--cyan)' : 'var(--magenta)';
+  micStatus.style.color = recOn ? 'var(--cyan)' : 'var(--magenta)';
+}
+function handleVoice(t){
+  const m = t.match(/\b(hey\s+|ok\s+)?cyber\b/i);
+  if(!m) return;  // ignore speech without the wake word
+  let cmd = t.slice(m.index + m[0].length).trim().replace(/^[,.\s]+/, '');
+  if(!cmd){
+    const hello = "Yes? I'm listening.";
+    addMsg('jarvis', hello); speakReply(hello);
+    return;
+  }
+  addMsg('sys', '🎤 heard: "' + t + '"');
+  sendText(cmd);
+}
+function ensureMic(){
+  if(recOn || !micWanted) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ sysMsg('Voice input not supported in this browser — use Chrome/Edge.'); return; }
-  if(recOn){ rec.stop(); return; }
-  rec = new SR(); rec.lang = recogLang; rec.interimResults = false;
-  rec.onstart = () => { recOn = true; micBtn.classList.add('on'); setStatus('LISTENING'); };
-  rec.onend = () => { recOn = false; micBtn.classList.remove('on'); setStatus('ONLINE'); };
-  rec.onerror = () => { recOn = false; micBtn.classList.remove('on'); setStatus('ONLINE'); };
+  if(!SR){
+    micWanted = false;
+    sysMsg('Voice input needs Chrome/Edge — typing still works.');
+    updateMicUI(); return;
+  }
+  rec = new SR();
+  rec.lang = recogLang;
+  rec.continuous = true;
+  rec.interimResults = false;
   rec.onresult = e => {
-    const t = e.results[0][0].transcript;
-    text.value = t; sendText(t); text.value = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      if(e.results[i].isFinal) handleVoice(e.results[i][0].transcript.trim());
+    }
   };
-  rec.start();
-};
+  rec.onend = () => {
+    recOn = false; updateMicUI();
+    if(micWanted) setTimeout(ensureMic, 600);  // auto-revive forever
+  };
+  rec.onerror = ev => {
+    if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){
+      micWanted = false;
+      sysMsg('Mic blocked — click the 🔒 icon in the address bar and allow the microphone.');
+    }
+    updateMicUI();
+  };
+  try{ rec.start(); recOn = true; }catch(e){}
+  updateMicUI();
+}
+// wake the mic on first interaction, then it never sleeps
+document.addEventListener('click', function initMic(){
+  ensureMic();
+  document.removeEventListener('click', initMic);
+});
+updateMicUI();
+
+// gesture status indicator (camera is auto-started by the server)
+const gesturePill = document.getElementById('gesturePill');
+async function refreshGesture(){
+  try{
+    const r = await fetch('/api/gesture', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:'{}'});
+    const s = await r.json();
+    gesturePill.textContent = s.running ? '🖐 GESTURE ON' : '🖐 NO CAM';
+    gesturePill.style.borderColor = s.running ? 'var(--cyan)' : 'var(--muted)';
+    gesturePill.style.color = s.running ? 'var(--cyan)' : 'var(--muted)';
+  }catch(e){ gesturePill.textContent = '🖐 ...'; }
+}
+refreshGesture();
+setInterval(refreshGesture, 5000);
 
 if('speechSynthesis' in window){ speechSynthesis.getVoices(); }
 
@@ -392,12 +452,39 @@ document.addEventListener('click', function firstClick(){
   document.removeEventListener('click', firstClick);
 });
 
+// matrix rain background (hacker style)
+(function(){
+  const mc = document.getElementById('matrix');
+  if(!mc) return;
+  const mx = mc.getContext('2d');
+  let cols, drops;
+  function sizeMatrix(){
+    mc.width = innerWidth; mc.height = innerHeight;
+    cols = Math.floor(mc.width / 16);
+    drops = Array.from({length: cols}, () => Math.random() * -60);
+  }
+  sizeMatrix();
+  addEventListener('resize', sizeMatrix);
+  const glyphs = '01アイ0123456789<>/\\{}[]#$';
+  setInterval(() => {
+    mx.fillStyle = 'rgba(2,6,4,.09)';
+    mx.fillRect(0, 0, mc.width, mc.height);
+    mx.fillStyle = '#00ff41';
+    mx.font = '14px monospace';
+    for(let i = 0; i < cols; i++){
+      const g = glyphs[Math.floor(Math.random() * glyphs.length)];
+      mx.fillText(g, i * 16, drops[i] * 16);
+      drops[i] = (drops[i] * 16 > mc.height && Math.random() > .976) ? 0 : drops[i] + .55;
+    }
+  }, 66);
+})();
+
 // boot overlay animation, then reveal
 (async () => {
   const bar = document.getElementById('bootBar');
   const msg = document.getElementById('bootMsg');
-  const steps = ['INITIALIZING...','LOADING NEURAL CORE...','CALIBRATING VOICE SYSTEMS...',
-                 'ESTABLISHING SECURE UPLINK...','ALL SYSTEMS NOMINAL'];
+  const steps = ['BYPASSING FIREWALL...','LOADING NEURAL CORE...','CALIBRATING VOICE MATRIX...',
+                 'UPLINK ESTABLISHED...','ALL SYSTEMS NOMINAL'];
   for(let i = 0; i < steps.length; i++){
     msg.textContent = steps[i];
     bar.style.transition = 'width .45s ease';
@@ -411,10 +498,11 @@ document.addEventListener('click', function firstClick(){
 (async () => {
   // wait for the overlay to fade
   await new Promise(r => setTimeout(r, 2400));
-  const lines = ['Initializing J.A.R.V.I.S. interface...','Secure local link established.',
-    'Voice systems: EN + සිං online.', 'All systems nominal.'];
+  const lines = ['Initializing CYBER AI interface...','Secure local link established.',
+    'Voice systems: EN + සිං online. Wake word: "CYBER".',
+    'Hand tracking: auto-starting...', 'All systems nominal.'];
   for(const l of lines){ sysMsg(l); await new Promise(r => setTimeout(r, 350)); }
-  const hello = 'Systems online. Speak or type — I understand English and Sinhala.';
+  const hello = 'Systems online. Say "CYBER" then your command — I understand English and Sinhala.';
   addMsg('jarvis', hello); speakReply(hello);
 })();
 </script>
