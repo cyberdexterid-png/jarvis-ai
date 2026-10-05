@@ -49,6 +49,23 @@ Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (
    It's saved permanently — you type it only once.
 3. Click anywhere on the page, allow the mic, say **"CYBER"** + your command.
 
+## 🌐 Go online — control your laptop from anywhere
+
+Your laptop stays the "body" (PC control + camera must run on it), but you can
+reach CYBER AI from your phone or any device:
+
+1. Download **cloudflared.exe** (free, no account/card) from
+   [cloudflare.com](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+   and put it next to `go-online.bat`
+2. Double-click **`go-online.bat`**
+3. Copy the `https://....trycloudflare.com` link it prints — open it on your phone!
+
+Mic, voice, chat and PC commands all work through the link (it's HTTPS).
+
+⚠️ **Security:** anyone with the link can command your PC — never share it.
+For a private alternative, use [Tailscale](https://tailscale.com) (free VPN)
+and open `http://<laptop-tailscale-ip>:8080`.
+
 ## 🚀 Make the EXE (release build)
 
 No Python needed for the end user — one file does everything:
