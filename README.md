@@ -32,11 +32,15 @@ Open ⚙ Settings → uncheck *REQUIRE WAKE WORD* — then everything you say is
 
 1. **`api_key.txt`** (easiest) — open it in Notepad, replace the placeholder
    with your key, save. Done — the app reads it every start.
+   (Gemini: `api_key.txt` · ChatGPT: `openai_key.txt`)
 2. **`start.bat`** — asks for the key on first run and saves it permanently.
-3. **Web UI** — click ⚙ Settings, paste the key, SAVE KEY.
+3. **Web UI** — ⚙ Settings → API → pick **GEMINI** (free) or **CHATGPT**,
+   paste the key, SAVE KEY. The key is verified with a real API call.
 
 Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (no card).
-⚠️ Never upload your real key to GitHub — the repo copy is a placeholder only.
+ChatGPT keys come from [platform.openai.com](https://platform.openai.com/api-keys)
+— note: OpenAI API is **paid** (needs billing), unlike free Gemini.
+⚠️ Never upload your real key to GitHub — the repo copies are placeholders only.
 
 ## ⚡ Quick start (2 minutes)
 
