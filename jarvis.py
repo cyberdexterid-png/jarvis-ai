@@ -58,7 +58,7 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "7.3.0"
+VERSION = "7.4.0"
 GEMINI_MODEL = "gemini-2.5-flash"   # preferred; auto-falls back to any live model
 _GEMINI_MODEL_RESOLVED = None
 SILENT = os.environ.get("JARVIS_SILENT") == "1"   # for testing: no audio
@@ -107,19 +107,40 @@ def save_config(cfg):
         return False, str(e)
 
 
-def get_api_key():
-    """Priority: env var -> api_key.txt -> key saved via web UI."""
-    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+def get_api_key(provider=None):
+    """Key for the given provider (default: active). Priority: env -> key file -> settings."""
+    provider = provider or get_provider()
+    if provider == "openai":
+        return _key_from_sources("OPENAI_API_KEY", OPENAI_KEY_FILE,
+                                 OPENAI_PLACEHOLDER, "openai_api_key")
+    return _key_from_sources("GEMINI_API_KEY", KEY_FILE,
+                             KEY_PLACEHOLDER, "gemini_api_key")
+
+
+def get_provider():
+    """Active AI brain: 'gemini' (free) or 'openai' (paid)."""
+    env = os.environ.get("CYBER_AI_PROVIDER", "").strip().lower()
+    if env == "chatgpt":
+        env = "openai"
+    if env in ("gemini", "openai"):
+        return env
+    p = load_config().get("provider", "gemini")
+    return p if p in ("gemini", "openai") else "gemini"
+
+
+def _key_from_sources(env_name, path, placeholder, cfg_key):
+    env_key = os.environ.get(env_name, "").strip()
     if env_key:
         return env_key
     try:
-        with open(KEY_FILE, "r", encoding="utf-8") as f:
-            file_key = f.read().strip()
-        if file_key and file_key != KEY_PLACEHOLDER and " " not in file_key:
-            return file_key
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                file_key = f.read().strip()
+            if file_key and file_key != placeholder and " " not in file_key:
+                return file_key
     except Exception:
         pass
-    return load_config().get("gemini_api_key", "").strip()
+    return load_config().get(cfg_key, "").strip()
 
 
 def _app_base():
@@ -131,20 +152,104 @@ def _app_base():
 
 KEY_FILE = os.path.join(_app_base(), "api_key.txt")
 KEY_PLACEHOLDER = "PASTE_YOUR_FREE_GEMINI_KEY_HERE"
+OPENAI_KEY_FILE = os.path.join(_app_base(), "openai_key.txt")
+OPENAI_PLACEHOLDER = "PASTE_YOUR_OPENAI_KEY_HERE"
 
 
 def ensure_key_file():
-    """Create api_key.txt with a placeholder so the user knows where to paste."""
+    """Create key files with placeholders so the user knows where to paste."""
     try:
         if not os.path.exists(KEY_FILE):
             with open(KEY_FILE, "w", encoding="utf-8") as f:
                 f.write(KEY_PLACEHOLDER + "\n")
+        if not os.path.exists(OPENAI_KEY_FILE):
+            with open(OPENAI_KEY_FILE, "w", encoding="utf-8") as f:
+                f.write(OPENAI_PLACEHOLDER + "\n")
     except Exception:
         pass
 
 
 def brain_connected():
-    return bool(get_api_key()) and genai_client is not None
+    provider = get_provider()
+    if provider == "openai":
+        return bool(get_api_key("openai"))
+    return bool(get_api_key("gemini")) and genai_client is not None
+
+
+# ------------------------------------------------------------- OpenAI brain
+OPENAI_MODELS = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"]
+
+
+def _openai_http_error_body(e):
+    try:
+        return e.read().decode()[:400]
+    except Exception:
+        return ""
+
+
+def _is_model_not_found(e):
+    low = (_openai_http_error_body(e) + " " + str(e)).lower()
+    return "model" in low and "not found" in low
+
+
+def _friendly_openai_error(e):
+    body = _openai_http_error_body(e)
+    low = (body + " " + str(e)).lower()
+    code = getattr(e, "code", None)
+    if code == 401 or "invalid api key" in low or "incorrect api key" in low:
+        return "OpenAI API key not valid — check it at platform.openai.com/api-keys"
+    if code == 429 or "quota" in low or "rate limit" in low:
+        return "OpenAI quota/rate limit hit — add billing at platform.openai.com"
+    if "model" in low and "not found" in low:
+        return "OpenAI model not available"
+    msg = str(e).strip().replace("\n", " ")
+    return (msg[:150] + "...") if len(msg) > 150 else (msg or "unknown error")
+
+
+def _openai_chat(question, api_key, model):
+    body = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": question},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=body,
+        headers={"Authorization": "Bearer " + api_key,
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=40) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    return data["choices"][0]["message"]["content"].strip()
+
+
+def _ask_openai(question, api_key):
+    """Ask OpenAI, trying cheap models first."""
+    err = None
+    for model in OPENAI_MODELS:
+        try:
+            return _openai_chat(question, api_key, model)
+        except Exception as e:
+            err = e
+            if not _is_model_not_found(e):
+                raise
+    raise err
+
+
+def test_openai_key(api_key):
+    """One tiny real call. Returns (ok, error_message). No extra package needed."""
+    if not api_key:
+        return False, "no OpenAI API key set"
+    try:
+        _ask_openai("Reply with the single word: ok", api_key)
+        return True, ""
+    except Exception as e:
+        return False, _friendly_openai_error(e)
 
 
 _last_brain_error = ""
@@ -413,19 +518,32 @@ OFFLINE_ANSWERS = [
 
 
 def ask_brain(question):
-    """Ask Gemini; fall back to small offline answers if no API key."""
+    """Ask the active AI provider; fall back to small offline answers if no key."""
     global _last_brain_error
-    chat = _get_chat()
-    if chat is not None:
-        try:
-            resp = chat.send_message(question)
-            _last_brain_error = ""
-            return resp.text.strip()
-        except Exception as e:
-            _last_brain_error = _friendly_gemini_error(e)
-            print(f"[Gemini error: {e}]")
-            return ("⚠️ Gemini API error: " + _last_brain_error +
-                    " — check your key in ⚙ Settings → API.")
+    provider = get_provider()
+    if provider == "openai":
+        api_key = get_api_key("openai")
+        if api_key:
+            try:
+                _last_brain_error = ""
+                return _ask_openai(question, api_key)
+            except Exception as e:
+                _last_brain_error = _friendly_openai_error(e)
+                print(f"[OpenAI error: {e}]")
+                return ("⚠️ OpenAI API error: " + _last_brain_error +
+                        " — check your key in ⚙ Settings → API.")
+    else:
+        chat = _get_chat()
+        if chat is not None:
+            try:
+                resp = chat.send_message(question)
+                _last_brain_error = ""
+                return resp.text.strip()
+            except Exception as e:
+                _last_brain_error = _friendly_gemini_error(e)
+                print(f"[Gemini error: {e}]")
+                return ("⚠️ Gemini API error: " + _last_brain_error +
+                        " — check your key in ⚙ Settings → API.")
     for pattern, answer in OFFLINE_ANSWERS:
         if re.search(pattern, question, re.IGNORECASE):
             return answer
@@ -920,6 +1038,7 @@ def run_web(port=8080):
             elif self.path == "/api/status":
                 send_json(self, {"brain": brain_connected(),
                                  "version": VERSION,
+                                 "provider": get_provider(),
                                  "has_key": bool(get_api_key()),
                                  "sdk": genai_client is not None,
                                  "last_error": _last_brain_error})
@@ -987,24 +1106,39 @@ def run_web(port=8080):
                     data = json.loads(self.rfile.read(length) or b"{}")
                 except Exception:
                     data = {}
-                key = str(data.get("gemini_api_key", "")).strip()
+                key_g = str(data.get("gemini_api_key", "")).strip()
+                key_o = str(data.get("openai_api_key", "")).strip()
+                prov = str(data.get("provider", "")).strip().lower()
                 cfg = load_config()
-                if key:
-                    cfg["gemini_api_key"] = key
-                elif "gemini_api_key" in cfg:
-                    del cfg["gemini_api_key"]
+                if prov in ("gemini", "openai"):
+                    cfg["provider"] = prov
+                if "gemini_api_key" in data:
+                    if key_g:
+                        cfg["gemini_api_key"] = key_g
+                    elif "gemini_api_key" in cfg:
+                        del cfg["gemini_api_key"]
+                if "openai_api_key" in data:
+                    if key_o:
+                        cfg["openai_api_key"] = key_o
+                    elif "openai_api_key" in cfg:
+                        del cfg["openai_api_key"]
                 ok, err = save_config(cfg)
                 global _chat, _GEMINI_MODEL_RESOLVED
                 _chat = None  # reconnect with the new key next time
                 _GEMINI_MODEL_RESOLVED = None  # re-detect model for the new key
-                key_now = get_api_key()
+                active = cfg.get("provider", "gemini")
+                key_now = get_api_key(active)
                 # validate with a real API call so the user sees the TRUE result
-                valid, key_err = test_gemini_key(key_now) if key_now else (False, "no key")
+                if active == "openai":
+                    valid, key_err = test_openai_key(key_now)
+                else:
+                    valid, key_err = test_gemini_key(key_now) if key_now else (False, "no key")
                 if valid:
                     global _last_brain_error
                     _last_brain_error = ""
                 send_json(self, {"ok": ok, "error": err,
                                  "brain": valid,
+                                 "provider": active,
                                  "key_valid": valid, "key_error": key_err,
                                  "sdk": genai_client is not None,
                                  "has_key": bool(key_now)})
