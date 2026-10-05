@@ -145,6 +145,38 @@
     color:var(--text);background:#060d16;border:1px solid rgba(0,229,255,.4);outline:none}
   #apiKey:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,229,255,.3)}
   .modal-row{display:flex;gap:10px;justify-content:flex-end}
+  /* ---------- themes ---------- */
+  [data-theme="ironman"]{--bg:#04070d;--panel:#0a1420;--cyan:#00e5ff;--cyan-dim:#0e5a6e;
+    --magenta:#ff2fd6;--text:#c9f6ff;--muted:#5b7f93}
+  [data-theme="cyberpunk"]{--bg:#0d0217;--panel:#180a2e;--cyan:#ff2fd6;--cyan-dim:#6e0e54;
+    --magenta:#9d4edd;--text:#ffd7f4;--muted:#9a6bb0}
+  /* ---------- AI face inside reactor ---------- */
+  #face{position:absolute;inset:0;margin:auto;width:148px;height:148px;z-index:5}
+  /* ---------- voice state + camera ---------- */
+  #voiceState{margin-top:10px;font-size:11px}
+  #voiceState.live{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(0,255,65,.35)}
+  #voiceState.speaking{border-color:var(--magenta);color:var(--magenta);box-shadow:0 0 12px rgba(255,47,214,.35)}
+  .cambox{margin-top:12px;border:1px solid rgba(0,255,65,.25);background:rgba(2,8,4,.6);
+    padding:8px;position:relative}
+  .cam-label{font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px}
+  #camFeed{width:100%;aspect-ratio:4/3;object-fit:cover;display:none;background:#000}
+  #camMsg{font-size:10px;color:var(--muted);letter-spacing:1px;padding:14px 4px;text-align:center}
+  /* ---------- settings tabs ---------- */
+  .tabs{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
+  .tab{flex:1;font-family:inherit;font-size:10px;letter-spacing:1px;padding:8px 4px;cursor:pointer;
+    background:transparent;color:var(--muted);border:1px solid rgba(0,255,65,.25)}
+  .tab.on{color:#02120a;background:var(--cyan);border-color:var(--cyan);font-weight:bold}
+  .tabpage{display:none}
+  .tabpage.on{display:block;animation:fadeUp .25s ease}
+  .theme-row{display:flex;gap:8px;margin:6px 0 4px}
+  .theme-btn{flex:1;font-family:inherit;font-size:11px;letter-spacing:1px;padding:12px 4px;cursor:pointer;
+    background:transparent;color:var(--text);border:1px solid var(--muted)}
+  .theme-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 14px rgba(0,255,65,.3);font-weight:bold}
+  .setline{display:flex;gap:8px;align-items:center;font-size:11px;letter-spacing:1px;
+    color:var(--muted);cursor:pointer;margin:10px 0}
+  .setline input{accent-color:var(--cyan);width:16px;height:16px}
+  .gesture-table{font-size:10px;color:var(--muted);line-height:2;letter-spacing:.5px;margin-top:6px}
+  .gesture-table b{color:var(--text)}
   #brainBadge{font-size:11px;letter-spacing:2px;margin-bottom:14px;display:block}
   @media(max-width:760px){.left{display:none}main{padding:10px}}
 </style>
@@ -183,7 +215,14 @@
     <div class="reactor" id="reactor">
       <div class="ticks"></div>
       <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
-      <div class="core"></div>
+      <canvas id="face" width="148" height="148"></canvas>
+      <div class="core" style="display:none"></div>
+    </div>
+    <div class="pill" id="voiceState">● STANDBY</div>
+    <div class="cambox">
+      <div class="cam-label">◉ OPTICAL SENSOR</div>
+      <img id="camFeed" alt="camera feed">
+      <div id="camMsg">camera offline</div>
     </div>
     <div class="status-line" id="statusLine">SYSTEMS NOMINAL</div>
     <div class="stats" id="stats">
@@ -218,20 +257,66 @@
 <div id="settingsModal">
   <div class="modal-box">
     <h2>⚙ SETTINGS</h2>
-    <span id="brainBadge">BRAIN: checking...</span>
-    <p>Get a <b>free</b> Gemini API key (no card) at
-      <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>
-      → <b>Get API key</b>, then paste it below. It is stored only on this PC.
-      <br>Tip: you can also paste it into <b>api_key.txt</b> next to start.bat.</p>
-    <input id="apiKey" type="password" placeholder="Paste Gemini API key here" autocomplete="off">
-    <label style="display:flex;gap:8px;align-items:center;margin-top:12px;
-      font-size:11px;letter-spacing:1px;color:var(--muted);cursor:pointer">
-      <input type="checkbox" id="wakeToggle" checked style="accent-color:#00ff41">
-      REQUIRE WAKE WORD "CYBER" (off = every phrase is a command)
-    </label>
-    <div class="modal-row">
+    <div class="tabs">
+      <button class="tab on" data-tab="t-look">🎨 LOOK</button>
+      <button class="tab" data-tab="t-voice">🎤 VOICE</button>
+      <button class="tab" data-tab="t-hands">🖐 HANDS</button>
+      <button class="tab" data-tab="t-api">🔑 API</button>
+    </div>
+
+    <div class="tabpage on" id="t-look">
+      <p>Choose your HUD style:</p>
+      <div class="theme-row">
+        <button class="theme-btn on" data-theme="matrix">🟢<br>MATRIX</button>
+        <button class="theme-btn" data-theme="ironman">🔵<br>IRON MAN</button>
+        <button class="theme-btn" data-theme="cyberpunk">🟣<br>CYBERPUNK</button>
+      </div>
+    </div>
+
+    <div class="tabpage" id="t-voice">
+      <label class="setline">
+        <input type="checkbox" id="wakeToggle" checked>
+        REQUIRE WAKE WORD "CYBER" <span style="opacity:.7">(off = every phrase is a command)</span>
+      </label>
+      <label class="setline">
+        <input type="checkbox" id="voiceReplyToggle" checked>
+        AI VOICE REPLIES <span style="opacity:.7">(off = text only)</span>
+      </label>
+      <div class="modal-row" style="justify-content:flex-start">
+        <button class="btn" id="testVoice">🔊 TEST VOICE</button>
+      </div>
+      <p style="margin-top:10px">Mic is always on. Voice language: EN / සිං toggle in the chat bar.</p>
+    </div>
+
+    <div class="tabpage" id="t-hands">
+      <p>Camera hand tracking starts automatically.</p>
+      <div class="modal-row" style="justify-content:flex-start;margin-bottom:8px">
+        <button class="btn" id="retryCam">📷 RETRY CAMERA</button>
+      </div>
+      <div class="gesture-table">
+        ☝️ <b>point</b> — move cursor<br>
+        🤏 <b>pinch</b> — click<br>
+        ✊ <b>fist</b> — play / pause<br>
+        ✌️ <b>2 fingers</b> — volume up<br>
+        🤟 <b>3 fingers</b> — volume down<br>
+        🖐️ <b>open palm</b> — mute
+      </div>
+    </div>
+
+    <div class="tabpage" id="t-api">
+      <span id="brainBadge">BRAIN: checking...</span>
+      <p>Get a <b>free</b> Gemini API key (no card) at
+        <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>
+        → <b>Get API key</b>, then paste it below. It is stored only on this PC.
+        <br>Tip: you can also paste it into <b>api_key.txt</b> next to start.bat.</p>
+      <input id="apiKey" type="password" placeholder="Paste Gemini API key here" autocomplete="off">
+      <div class="modal-row">
+        <button class="btn" id="saveKey">SAVE KEY</button>
+      </div>
+    </div>
+
+    <div class="modal-row" style="margin-top:14px">
       <button class="btn" id="closeSettings">CLOSE</button>
-      <button class="btn" id="saveKey">SAVE KEY</button>
     </div>
   </div>
 </div>
@@ -261,7 +346,13 @@ function addMsg(who, txt){
 }
 function sysMsg(t){ addMsg('sys', t); }
 
+let voiceReplyOn = localStorage.getItem('cyber_voicereply') !== 'off';
 function speakReply(t){
+  const done = () => {
+    faceState.speaking = false;
+    setVoiceState(recOn ? 'LISTENING' : 'STANDBY');
+  };
+  if(!voiceReplyOn){ done(); return; }
   try{
     const u = new SpeechSynthesisUtterance(t);
     const isSi = /[\u0d80-\u0dff]/.test(t);
@@ -270,14 +361,19 @@ function speakReply(t){
                                     : v.lang.toLowerCase().startsWith('en'));
     if(v){ u.voice = v; u.lang = v.lang; }
     else u.lang = isSi ? 'si-LK' : 'en-US';
+    u.rate = 0.95;
+    u.onstart = () => { faceState.speaking = true; setVoiceState('SPEAKING'); };
+    u.onend = done;
+    u.onerror = done;
+    speechSynthesis.cancel();
     speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){ done(); }
 }
 
 async function sendText(t){
   t = t.trim(); if(!t) return;
   addMsg('you', t);
-  setStatus('THINKING');
+  setStatus('THINKING'); setVoiceState('THINKING');
   const typing = document.createElement('div');
   typing.className = 'typing'; typing.textContent = 'CYBER AI is thinking...';
   log.appendChild(typing); log.scrollTop = log.scrollHeight;
@@ -363,9 +459,11 @@ function ensureMic(){
   rec.lang = recogLang;
   rec.continuous = true;
   rec.interimResults = false;
-  rec.onstart = () => { recOn = true; updateMicUI(); };
-  rec.onsoundstart = () => { if(recOn) micStatus.textContent = '🎤 HEARING...'; };
-  rec.onsoundend = () => { updateMicUI(); };
+  rec.onstart = () => { recOn = true; updateMicUI(); setVoiceState('LISTENING'); };
+  rec.onsoundstart = () => {
+    if(recOn){ micStatus.textContent = '🎤 HEARING...'; setVoiceState('HEARING'); }
+  };
+  rec.onsoundend = () => { updateMicUI(); if(recOn && !faceState.speaking) setVoiceState('LISTENING'); };
   rec.onresult = e => {
     for(let i = e.resultIndex; i < e.results.length; i++){
       if(e.results[i].isFinal) handleVoice(e.results[i][0].transcript.trim());
@@ -373,6 +471,7 @@ function ensureMic(){
   };
   rec.onend = () => {
     recOn = false; updateMicUI();
+    if(!faceState.speaking) setVoiceState('STANDBY');
     if(micWanted) setTimeout(ensureMic, 600);  // auto-revive forever
   };
   rec.onerror = ev => {
@@ -409,7 +508,7 @@ async function refreshGesture(){
     gesturePill.style.color = s.running ? 'var(--cyan)' : 'var(--muted)';
   }catch(e){ gesturePill.textContent = '🖐 ...'; }
 }
-gesturePill.onclick = async () => {
+async function retryCamera(){
   gesturePill.textContent = '🖐 STARTING...';
   try{
     await fetch('/api/gesture', {method:'POST',
@@ -417,9 +516,48 @@ gesturePill.onclick = async () => {
       body: JSON.stringify({action:'start'})});
   }catch(e){}
   setTimeout(refreshGesture, 2000);
-};
+}
+gesturePill.onclick = retryCamera;
 refreshGesture();
 setInterval(refreshGesture, 5000);
+
+// ---------- camera preview (frames streamed from the Python gesture thread) ----------
+const camFeed = document.getElementById('camFeed');
+const camMsg = document.getElementById('camMsg');
+camFeed.onload = () => { camFeed.style.display = 'block'; camMsg.style.display = 'none'; };
+camFeed.onerror = () => {
+  camFeed.style.display = 'none'; camMsg.style.display = 'block';
+  camMsg.textContent = 'camera offline';
+};
+camFeed.src = '/cam_feed';
+setInterval(() => {
+  if(camFeed.style.display === 'none') camFeed.src = '/cam_feed?' + Date.now();
+}, 10000);
+
+// ---------- settings tabs ----------
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.tabpage').forEach(p => p.classList.toggle('on', p.id === t.dataset.tab));
+});
+
+// ---------- voice settings ----------
+const voiceReplyToggle = document.getElementById('voiceReplyToggle');
+voiceReplyToggle.checked = voiceReplyOn;
+voiceReplyToggle.onchange = e => {
+  voiceReplyOn = e.target.checked;
+  localStorage.setItem('cyber_voicereply', voiceReplyOn ? 'on' : 'off');
+  if(!voiceReplyOn){
+    try{ speechSynthesis.cancel(); }catch(err){}
+    faceState.speaking = false;
+    setVoiceState(recOn ? 'LISTENING' : 'STANDBY');
+    sysMsg('AI voice replies OFF — text only.');
+  } else {
+    sysMsg('AI voice replies ON.');
+  }
+};
+document.getElementById('testVoice').onclick = () =>
+  speakReply('All systems nominal. I am CYBER AI, at your service.');
+document.getElementById('retryCam').onclick = retryCamera;
 
 if('speechSynthesis' in window){ speechSynthesis.getVoices(); }
 
@@ -502,6 +640,11 @@ document.addEventListener('click', function firstClick(){
 });
 
 // matrix rain background (hacker style)
+let rainColor = '#00ff41';
+function refreshRainColor(){
+  rainColor = getComputedStyle(document.documentElement)
+    .getPropertyValue('--cyan').trim() || '#00ff41';
+}
 (function(){
   const mc = document.getElementById('matrix');
   if(!mc) return;
@@ -518,7 +661,7 @@ document.addEventListener('click', function firstClick(){
   setInterval(() => {
     mx.fillStyle = 'rgba(2,6,4,.09)';
     mx.fillRect(0, 0, mc.width, mc.height);
-    mx.fillStyle = '#00ff41';
+    mx.fillStyle = rainColor;
     mx.font = '14px monospace';
     for(let i = 0; i < cols; i++){
       const g = glyphs[Math.floor(Math.random() * glyphs.length)];
@@ -527,6 +670,92 @@ document.addEventListener('click', function firstClick(){
     }
   }, 66);
 })();
+
+// ---------- themes ----------
+function setTheme(name){
+  if(name === 'matrix') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', name);
+  localStorage.setItem('cyber_theme', name);
+  document.querySelectorAll('.theme-btn').forEach(
+    b => b.classList.toggle('on', b.dataset.theme === name));
+  refreshRainColor();
+}
+document.querySelectorAll('.theme-btn').forEach(
+  b => b.onclick = () => setTheme(b.dataset.theme));
+setTheme(localStorage.getItem('cyber_theme') || 'matrix');
+
+// ---------- voice state pill ----------
+const voiceStateEl = document.getElementById('voiceState');
+function setVoiceState(s){
+  voiceStateEl.textContent = '● ' + s;
+  voiceStateEl.classList.toggle('live', s === 'LISTENING' || s === 'HEARING');
+  voiceStateEl.classList.toggle('speaking', s === 'SPEAKING');
+}
+
+// ---------- AI face (mouth moves in real time while speaking) ----------
+const faceC = document.getElementById('face');
+const fx = faceC.getContext('2d');
+const faceState = { speaking:false, mouth:0, t:0 };
+function themeCol(n, fb){
+  return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb;
+}
+function drawFace(){
+  const t = faceState.t += 0.06;
+  const W = faceC.width, H = faceC.height, cx = W/2, cy = H/2;
+  fx.clearRect(0, 0, W, H);
+  const col = themeCol('--cyan', '#00ff41');
+  const mag = themeCol('--magenta', '#00e5ff');
+  // head ring
+  fx.save();
+  fx.strokeStyle = col; fx.lineWidth = 2.5;
+  fx.shadowColor = col; fx.shadowBlur = 16;
+  fx.beginPath(); fx.arc(cx, cy, 56, 0, Math.PI*2); fx.stroke();
+  fx.restore();
+  // ring ticks
+  fx.save();
+  fx.strokeStyle = col; fx.globalAlpha = 0.5; fx.lineWidth = 2;
+  for(let k = 0; k < 12; k++){
+    const a = t*0.4 + k * Math.PI/6;
+    fx.beginPath();
+    fx.moveTo(cx + Math.cos(a)*62, cy + Math.sin(a)*62);
+    fx.lineTo(cx + Math.cos(a)*67, cy + Math.sin(a)*67);
+    fx.stroke();
+  }
+  fx.restore();
+  // eyes (blink)
+  const blink = (t % 4.2 < 0.14) ? 0.12 : 1;
+  const wide = faceState.speaking ? 1.25 : 1;
+  fx.save();
+  fx.fillStyle = col; fx.shadowColor = col; fx.shadowBlur = 14;
+  for(const ex of [cx-25, cx+25]){
+    fx.beginPath();
+    fx.ellipse(ex, cy-14, 12*wide, Math.max(1.6, 9*blink), 0, 0, Math.PI*2);
+    fx.fill();
+  }
+  fx.restore();
+  // mouth — animates in real time while speaking
+  const target = faceState.speaking
+    ? 0.3 + 0.7*Math.abs(Math.sin(t*11)*0.62 + Math.sin(t*5.3+1.7)*0.38)
+    : 0.05;
+  faceState.mouth += (target - faceState.mouth) * 0.45;
+  const m = faceState.mouth;
+  fx.save();
+  fx.fillStyle = 'rgba(0,0,0,.55)';
+  fx.strokeStyle = mag; fx.lineWidth = 2;
+  fx.shadowColor = mag; fx.shadowBlur = 10;
+  fx.beginPath();
+  fx.ellipse(cx, cy+30, 28, 3 + m*20, 0, 0, Math.PI*2);
+  fx.fill(); fx.stroke();
+  fx.restore();
+  // forehead circuit line
+  fx.save();
+  fx.strokeStyle = col; fx.globalAlpha = 0.45; fx.lineWidth = 1.5;
+  fx.beginPath();
+  fx.moveTo(cx-34, cy-38); fx.lineTo(cx-14, cy-52); fx.lineTo(cx+14, cy-52); fx.lineTo(cx+34, cy-38);
+  fx.stroke();
+  fx.restore();
+}
+setInterval(drawFace, 50);
 
 // boot overlay animation, then reveal
 (async () => {
