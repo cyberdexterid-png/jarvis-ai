@@ -58,8 +58,9 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "7.1.0"
-GEMINI_MODEL = "gemini-2.0-flash"   # fast + free tier friendly
+VERSION = "7.2.0"
+GEMINI_MODEL = "gemini-2.5-flash"   # preferred; auto-falls back to any live model
+_GEMINI_MODEL_RESOLVED = None
 SILENT = os.environ.get("JARVIS_SILENT") == "1"   # for testing: no audio
 WEB_MODE = False                    # True when serving the web HUD
 _web_replies = []
@@ -149,6 +150,33 @@ def brain_connected():
 _last_brain_error = ""
 
 
+def _resolve_model(api_key):
+    """Pick a working model: prefer GEMINI_MODEL, else first live flash/lite model.
+
+    Google retires models regularly — this keeps CYBER AI working forever.
+    """
+    global _GEMINI_MODEL_RESOLVED
+    if _GEMINI_MODEL_RESOLVED:
+        return _GEMINI_MODEL_RESOLVED
+    try:
+        client = genai_client.Client(api_key=api_key)
+        names = [m.name.replace("models/", "")
+                 for m in client.models.list() if m.name]
+        if GEMINI_MODEL in names:
+            _GEMINI_MODEL_RESOLVED = GEMINI_MODEL
+        else:
+            pick = next((n for n in names
+                         if "flash" in n.lower() or "lite" in n.lower()),
+                        names[0] if names else GEMINI_MODEL)
+            _GEMINI_MODEL_RESOLVED = pick
+            if pick != GEMINI_MODEL:
+                print(f"[Gemini model {GEMINI_MODEL} unavailable, using {pick}]")
+    except Exception as e:
+        print(f"[model auto-detect failed: {e}]")
+        _GEMINI_MODEL_RESOLVED = GEMINI_MODEL
+    return _GEMINI_MODEL_RESOLVED
+
+
 def _friendly_gemini_error(e):
     """Short human-readable version of a Gemini API error."""
     msg = str(e).strip().replace("\n", " ")
@@ -157,10 +185,10 @@ def _friendly_gemini_error(e):
         return "API key not valid — grab a fresh one from aistudio.google.com/apikey"
     if "quota" in low:
         return "API quota exceeded — try again later or use a new key"
+    if "no longer available" in low or ("model" in low and "not found" in low):
+        return "that Gemini model was retired — restart CYBER AI to auto-pick a live one"
     if "permission" in low or "denied" in low or "403" in low:
         return "API access denied for this key — check AI Studio settings"
-    if "model" in low and "not found" in low:
-        return f"model {GEMINI_MODEL} not available"
     if "timeout" in low or "unreachable" in low or "failed to connect" in low:
         return "could not reach Google servers — check internet"
     return (msg[:150] + "...") if len(msg) > 150 else (msg or "unknown error")
@@ -174,8 +202,9 @@ def test_gemini_key(api_key):
         return False, "no API key set"
     try:
         client = genai_client.Client(api_key=api_key)
+        model = _resolve_model(api_key)
         resp = client.models.generate_content(
-            model=GEMINI_MODEL, contents="Reply with the single word: ok")
+            model=model, contents="Reply with the single word: ok")
         _ = resp.text
         return True, ""
     except Exception as e:
@@ -360,8 +389,9 @@ def _get_chat():
         return None
     try:
         client = genai_client.Client(api_key=api_key)
+        model = _resolve_model(api_key)
         _chat = client.chats.create(
-            model=GEMINI_MODEL,
+            model=model,
             config=genai_types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT),
         )
@@ -964,8 +994,9 @@ def run_web(port=8080):
                 elif "gemini_api_key" in cfg:
                     del cfg["gemini_api_key"]
                 ok, err = save_config(cfg)
-                global _chat
+                global _chat, _GEMINI_MODEL_RESOLVED
                 _chat = None  # reconnect with the new key next time
+                _GEMINI_MODEL_RESOLVED = None  # re-detect model for the new key
                 key_now = get_api_key()
                 # validate with a real API call so the user sees the TRUE result
                 valid, key_err = test_gemini_key(key_now) if key_now else (False, "no key")
