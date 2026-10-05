@@ -58,7 +58,7 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "7.2.0"
+VERSION = "7.3.0"
 GEMINI_MODEL = "gemini-2.5-flash"   # preferred; auto-falls back to any live model
 _GEMINI_MODEL_RESOLVED = None
 SILENT = os.environ.get("JARVIS_SILENT") == "1"   # for testing: no audio
