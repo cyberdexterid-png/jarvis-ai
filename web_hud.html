@@ -93,6 +93,10 @@
   .typing{align-self:flex-start;color:var(--cyan);font-size:12px;letter-spacing:2px;animation:blink 1s infinite}
   @keyframes blink{50%{opacity:.3}}
 
+  #heardTicker{font-size:10px;letter-spacing:1px;color:var(--muted);
+    padding:6px 16px;border-top:1px solid rgba(0,255,65,.15);
+    background:rgba(2,8,4,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #heardTicker.hot{color:var(--cyan)}
   .inputbar{display:flex;gap:10px;padding:14px;border-top:1px solid rgba(0,229,255,.25);
     background:rgba(4,10,18,.85);align-items:center}
   #text{flex:1;font-family:inherit;font-size:14px;padding:12px 16px;color:var(--text);
@@ -200,6 +204,7 @@
 
   <section class="right">
     <div id="log"></div>
+    <div id="heardTicker">🎤 mic standby — click anywhere, allow mic, then say "CYBER" + command</div>
     <div class="inputbar">
       <button class="btn" id="langBtn" title="voice language">EN</button>
       <span class="pill" id="micStatus" title="microphone">🎤 ...</span>
@@ -308,8 +313,15 @@ function updateMicUI(){
   micStatus.style.color = recOn ? 'var(--cyan)' : 'var(--magenta)';
 }
 function handleVoice(t){
-  const m = t.match(/\b(hey\s+|ok\s+)?cyber\b/i);
-  if(!m) return;  // ignore speech without the wake word
+  const ticker = document.getElementById('heardTicker');
+  ticker.textContent = '🎤 heard: "' + t + '"';
+  const m = t.match(/\b(hey\s+|ok\s+)?(cyber|siber)\b/i);
+  if(!m){
+    ticker.textContent += ' — say "CYBER" first!';
+    ticker.classList.remove('hot');
+    return;
+  }
+  ticker.classList.add('hot');
   let cmd = t.slice(m.index + m[0].length).trim().replace(/^[,.\s]+/, '');
   if(!cmd){
     const hello = "Yes? I'm listening.";
@@ -331,6 +343,9 @@ function ensureMic(){
   rec.lang = recogLang;
   rec.continuous = true;
   rec.interimResults = false;
+  rec.onstart = () => { recOn = true; updateMicUI(); };
+  rec.onsoundstart = () => { if(recOn) micStatus.textContent = '🎤 HEARING...'; };
+  rec.onsoundend = () => { updateMicUI(); };
   rec.onresult = e => {
     for(let i = e.resultIndex; i < e.results.length; i++){
       if(e.results[i].isFinal) handleVoice(e.results[i][0].transcript.trim());
@@ -344,10 +359,12 @@ function ensureMic(){
     if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){
       micWanted = false;
       sysMsg('Mic blocked — click the 🔒 icon in the address bar and allow the microphone.');
+      document.getElementById('heardTicker').textContent = '🎤 mic BLOCKED — allow microphone in the address bar 🔒';
     }
     updateMicUI();
   };
-  try{ rec.start(); recOn = true; }catch(e){}
+  try{ rec.start(); }
+  catch(e){ setTimeout(() => { recOn = false; ensureMic(); }, 1200); }
   updateMicUI();
 }
 // wake the mic on first interaction, then it never sleeps
