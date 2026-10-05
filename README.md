@@ -1,16 +1,33 @@
-# J.A.R.V.I.S. — free DIY voice assistant 🤖
+# CYBER AI 🤖 — free Iron Man-style assistant
 
-Your own Jarvis for the laptop. **100% free — no card needed.**
+Your own CYBER AI for the laptop. **100% free — no card needed.**
+
+🎤 **Always-on voice** — say **"CYBER"** + your command (no button!)
+🖐️ **Hand gestures** — camera auto-starts, control like Iron Man
+🌐 Bilingual English + Sinhala | 🖥️ Full PC control | 🎨 Hacker-style UI
+
+## 🖐️ Gesture controls (camera)
+
+| Gesture | Action |
+|---|---|
+| ☝️ Point (index finger) | Move mouse cursor |
+| 🤏 Pinch (thumb + index) | Left click |
+| ✊ Fist | Play / pause |
+| ✌️ 2 fingers | Volume up |
+| 🤟 3 fingers | Volume down |
+| 🖐️ Open palm | Mute |
+
+Camera starts automatically. Disable with `python jarvis.py --no-gesture`.
 
 ## 🚀 Make the EXE (release build)
 
 No Python needed for the end user — one file does everything:
 
 1. Open this folder, double-click **`build-exe.bat`**
-2. Wait a few minutes → **`dist\JARVIS.exe`** is created
-3. Share `JARVIS.exe` — anyone can double-click and use it!
+2. Wait a few minutes → **`dist\CyberAI.exe`** is created
+3. Share `CyberAI.exe` — anyone can double-click and use it!
 
-The exe opens the beautiful web UI automatically. First run: click ⚙ **Settings** in the UI and paste a free Gemini API key (from aistudio.google.com, no card).
+The exe opens the hacker web UI automatically. First run: click ⚙ **Settings** in the UI and paste a free Gemini API key (from aistudio.google.com, no card).
 
 > Note: the exe is built on your PC (Windows builds can't be made on other systems). Build once, share everywhere.
 
