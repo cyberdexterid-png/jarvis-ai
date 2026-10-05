@@ -5,254 +5,257 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CYBER AI — Local Interface</title>
 <style>
-  :root{
-    --bg:#020604; --panel:#071009; --cyan:#00ff41; --cyan-dim:#0e6e2a;
-    --magenta:#00e5ff; --text:#d2ffdd; --muted:#5b8f68;
-  }
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    background:var(--bg); color:var(--text);
-    font-family:'Consolas','Courier New',monospace;
-    overflow:hidden; display:flex; flex-direction:column;
-  }
-  /* background layers */
-  #matrix{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5}
-  .grid-bg{position:fixed;inset:0;pointer-events:none;z-index:0;
-    background-image:linear-gradient(rgba(0,229,255,.05) 1px,transparent 1px),
-                     linear-gradient(90deg,rgba(0,229,255,.05) 1px,transparent 1px);
-    background-size:44px 44px;
-    mask-image:radial-gradient(ellipse at 50% 40%,black 30%,transparent 75%);}
-  .scanlines{position:fixed;inset:0;pointer-events:none;z-index:50;opacity:.5;
-    background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.25) 2px 4px);}
-  .glow-orb{position:fixed;border-radius:50%;filter:blur(90px);opacity:.25;pointer-events:none;z-index:0;}
-  .orb1{width:420px;height:420px;background:#00e5ff;top:-140px;left:-120px;animation:drift 14s ease-in-out infinite alternate}
-  .orb2{width:360px;height:360px;background:#ff2fd6;bottom:-140px;right:-100px;animation:drift 18s ease-in-out infinite alternate-reverse}
-  @keyframes drift{from{transform:translate(0,0)}to{transform:translate(60px,40px)}}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:Consolas,'Segoe UI',monospace;overflow-x:hidden;font-size:13px;min-height:100vh;display:flex;flex-direction:column}
+:root{--bg:#020604;--panel:rgba(6,14,8,.78);--cyan:#00ff41;--cyan-dim:#0e6e2a;--magenta:#00e5ff;--text:#d2ffdd;--muted:#5b8f68;--line:rgba(0,255,65,.16)}
+[data-theme="ironman"]{--bg:#030a10;--panel:rgba(8,20,28,.8);--cyan:#00e5ff;--cyan-dim:#0e5a6e;--magenta:#ff2fd6;--text:#c9f6ff;--muted:#5b7f93;--line:rgba(0,229,255,.16)}
+[data-theme="cyberpunk"]{--bg:#0d0217;--panel:rgba(22,8,40,.8);--cyan:#ff2fd6;--cyan-dim:#6e0e54;--magenta:#9d4edd;--text:#ffd7f4;--muted:#9a6bb0;--line:rgba(255,47,214,.16)}
+/* backdrop */
+#matrix{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.4}
+.grid-bg{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+background-size:44px 44px;
+mask-image:radial-gradient(ellipse at 50% 40%,black 30%,transparent 90%)}
+.scanlines{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:.5;
+background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.14) 2px 4px)}
+/* boot */
+#boot{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;transition:opacity .6s}
+#boot.gone{opacity:0;pointer-events:none}
+.b-title{font-size:34px;letter-spacing:12px;color:var(--cyan);text-shadow:0 0 24px var(--cyan)}
+.b-sub{font-size:10px;letter-spacing:4px;color:var(--muted)}
+#bootBarWrap{width:min(420px,70vw);height:3px;background:rgba(128,128,128,.2)}
+#bootBar{height:100%;width:0;background:var(--cyan);box-shadow:0 0 12px var(--cyan);transition:width .3s}
+/* header */
+header{display:flex;align-items:center;gap:26px;padding:12px 28px;border-bottom:1px solid var(--line);position:relative;z-index:2;background:linear-gradient(180deg,rgba(0,0,0,.35),transparent)}
+.brand h1{font-size:21px;letter-spacing:5px;color:var(--cyan);font-weight:600}
+.brand h1 span{color:var(--muted);font-size:13px;letter-spacing:3px}
+.brand small{display:block;font-size:8.5px;letter-spacing:3px;color:var(--muted);margin-top:3px}
+.sys-online{margin:0 auto;font-size:11px;letter-spacing:5px;color:var(--cyan);text-shadow:0 0 12px var(--cyan)}
+.hud-right{display:flex;gap:10px;align-items:center;margin-left:auto}
+.sys-online{margin:0}
+.clockbox{text-align:right;line-height:1.3}
+#clock{font-size:19px;letter-spacing:2px;color:var(--text)}
+#date{font-size:8.5px;letter-spacing:2.5px;color:var(--muted)}
+.pill{font-size:10px;letter-spacing:1.5px;padding:7px 12px;border:1px solid var(--line);color:var(--muted);background:rgba(0,0,0,.35);white-space:nowrap}
+.pill.local{color:var(--cyan);border-color:var(--cyan)}
+.btn{font-family:inherit;font-size:12px;padding:8px 12px;background:transparent;color:var(--cyan);border:1px solid var(--cyan-dim);cursor:pointer;letter-spacing:1px}
+.btn:hover{background:rgba(0,255,65,.12);box-shadow:0 0 12px rgba(0,255,65,.25)}
+.btn.send{font-size:16px;padding:8px 16px}
+/* main grid */
+main{flex:1;display:grid;grid-template-columns:292px minmax(0,1fr) 302px;gap:14px;padding:14px 28px;position:relative;z-index:2;align-items:start;width:100%;max-width:1760px;margin:0 auto}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);padding:16px;position:relative;backdrop-filter:blur(3px)}
+.panel::before,.panel::after{content:'';position:absolute;width:13px;height:13px;border:1px solid var(--cyan);opacity:.8}
+.panel::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+.panel::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+.panel-head{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:3px;color:var(--cyan);margin-bottom:14px}
+.panel-head span:last-child{color:var(--muted);font-size:8.5px}
+.panel-head b{color:var(--cyan)}
+/* meters */
+.meter{margin-bottom:12px}
+.m-top{display:flex;justify-content:space-between;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px}
+.m-top b{color:var(--text)}
+.m-bar{height:5px;background:rgba(128,128,128,.15)}
+.m-bar i{display:block;height:100%;width:20%;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));box-shadow:0 0 8px var(--cyan);transition:width 1.2s ease}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.statgrid div b{display:block;font-size:15px;color:var(--text);letter-spacing:1px}
+.statgrid div span{font-size:8.5px;letter-spacing:2px;color:var(--muted)}
+/* command deck */
+.cmddeck{display:flex;flex-direction:column;gap:8px}
+.chip{display:flex;justify-content:space-between;align-items:center;font-family:inherit;font-size:12px;padding:11px 12px;background:rgba(0,0,0,.3);color:var(--text);border:1px solid var(--line);border-left:2px solid var(--cyan-dim);cursor:pointer;letter-spacing:.5px;text-align:left}
+.chip:hover{border-color:var(--cyan);border-left-color:var(--cyan);box-shadow:0 0 12px rgba(0,255,65,.18)}
+.chip em{font-style:normal;font-size:8.5px;letter-spacing:2px;color:var(--muted)}
+/* camera */
+#camFeed{width:100%;aspect-ratio:4/3;object-fit:cover;display:none;background:#000;border:1px solid var(--line)}
+#camMsg{font-size:10px;color:var(--muted);letter-spacing:1px;padding:16px 4px;text-align:center;line-height:1.8}
+/* center viz */
+.core-viz{position:relative;width:300px;height:300px;margin:4px auto}
+.viz-ring{position:absolute;border-radius:50%;border:1px solid transparent}
+.vr1{inset:0;border-top-color:var(--cyan);border-right-color:var(--line);animation:spin 14s linear infinite}
+.vr2{inset:28px;border:1px dashed var(--cyan-dim);opacity:.7;animation:spin 24s linear infinite reverse}
+.vr3{inset:56px;border-bottom-color:var(--magenta);border-left-color:var(--line);animation:spin 9s linear infinite}
+.viz-sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0deg,var(--cyan) 12deg,transparent 46deg);opacity:.12;animation:spin 5s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#face{position:absolute;inset:0;margin:auto;z-index:5}
+#reactor.listening{filter:drop-shadow(0 0 22px var(--cyan))}
+#reactor.thinking .vr1{animation-duration:1.6s}
+.pill-row{display:flex;gap:10px;justify-content:center;margin-top:6px}
+#voiceState.live{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(0,255,65,.3)}
+#voiceState.speaking{border-color:var(--magenta);color:var(--magenta);box-shadow:0 0 12px rgba(255,47,214,.3)}
+.status-line{text-align:center;font-size:10px;letter-spacing:3px;color:var(--muted);margin-top:10px}
+/* chat */
+.chat-panel{display:flex;flex-direction:column;min-height:340px}
+#log{flex:1;overflow-y:auto;max-height:46vh;min-height:200px;padding:4px 2px}
+.msg{margin:9px 0;font-size:12.5px;line-height:1.65;animation:fadeUp .25s ease}
+.msg .who{font-size:9.5px;letter-spacing:2.5px;display:block;margin-bottom:2px}
+.msg.jarvis .who{color:var(--cyan)}
+.msg.you{text-align:right}
+.msg.you .who{color:var(--magenta)}
+.msg.sys{font-size:10.5px;color:var(--muted);letter-spacing:.5px}
+.msg.sys .who{color:var(--muted)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
+.typing{font-size:11px;color:var(--muted);letter-spacing:2px;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.35}}
+#heardTicker{font-size:10px;letter-spacing:1px;color:var(--muted);padding:8px 2px;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#heardTicker.hot{color:var(--cyan)}
+.inputbar{display:flex;gap:10px;padding-top:10px}
+#text{flex:1;font-family:inherit;font-size:13px;padding:11px 14px;color:var(--text);background:rgba(0,0,0,.4);border:1px solid var(--line);outline:none;letter-spacing:.5px}
+#text:focus{border-color:var(--cyan);box-shadow:0 0 10px rgba(0,255,65,.2)}
+/* activity */
+#activityLog{max-height:230px;overflow-y:auto}
+.act{display:flex;gap:9px;padding:6px 0;border-bottom:1px solid var(--line);font-size:11px;align-items:baseline}
+.act time{color:var(--muted);font-size:9.5px;min-width:52px}
+.act i{color:var(--cyan);font-style:normal;font-size:8px}
+/* syslist */
+.sysrow{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line);font-size:12px}
+.sysrow small{display:block;color:var(--muted);font-size:9.5px;letter-spacing:.5px;margin-top:2px}
+.sysrow b{font-weight:600;letter-spacing:1px}
+.sysrow em{font-style:normal;font-size:10px;letter-spacing:2px}
+.sysrow em.ok,.ok{color:var(--cyan)}
+.sysrow em.bad,.bad{color:#ff5470}
+.sysrow em.warn,.warn{color:#ffb347}
+/* footer */
+footer{display:flex;justify-content:space-between;padding:10px 28px;border-top:1px solid var(--line);font-size:9px;letter-spacing:3px;color:var(--muted);position:relative;z-index:2}
+footer .warn{color:#ffb347}
+/* settings modal */
+#settingsModal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+#settingsModal.open{display:flex}
+.modal-box{width:min(520px,92vw);max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--cyan);padding:26px;box-shadow:0 0 40px rgba(0,229,255,.2)}
+.modal-box h2{font-size:15px;letter-spacing:4px;color:var(--cyan);margin-bottom:4px}
+.modal-box p{font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:12px}
+.modal-box p a{color:var(--cyan)}
+#apiKey{width:100%;font-family:inherit;font-size:13px;padding:10px 12px;margin-bottom:8px;color:var(--text);background:rgba(0,0,0,.5);border:1px solid var(--line);outline:none}
+#apiKey:focus{border-color:var(--cyan)}
+.modal-row{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
+#brainBadge{font-size:10px;letter-spacing:1.5px;display:block;margin-bottom:10px}
+.tabs{display:flex;gap:6px;margin:14px 0}
+.tab{flex:1;font-family:inherit;font-size:10px;letter-spacing:1px;padding:9px 4px;cursor:pointer;background:transparent;color:var(--muted);border:1px solid var(--line)}
+.tab.on{color:#02120a;background:var(--cyan);border-color:var(--cyan);font-weight:bold}
+.tabpage{display:none}
+.tabpage.on{display:block;animation:fadeUp .25s ease}
+.theme-row{display:flex;gap:8px;margin:6px 0 4px}
+.theme-btn{flex:1;font-family:inherit;font-size:11px;letter-spacing:1px;padding:12px 4px;cursor:pointer;background:transparent;color:var(--text);border:1px solid var(--muted)}
+.theme-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 14px rgba(0,255,65,.3);font-weight:bold}
+.setline{display:flex;gap:8px;align-items:center;font-size:11px;letter-spacing:1px;color:var(--muted);cursor:pointer;margin:10px 0}
+.setline input{accent-color:var(--cyan);width:16px;height:16px}
+.gesture-table{font-size:10.5px;color:var(--muted);line-height:2;letter-spacing:.5px;margin-top:6px}
+.gesture-table b{color:var(--text)}
+@media(max-width:1100px){main{grid-template-columns:1fr}header{flex-wrap:wrap}}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--cyan-dim)}
 
-  header{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;
-    padding:14px 22px;border-bottom:1px solid rgba(0,229,255,.25);
-    background:linear-gradient(180deg,rgba(0,229,255,.07),transparent);}
-  .brand h1{font-size:22px;letter-spacing:6px;color:var(--cyan);
-    text-shadow:0 0 18px rgba(0,229,255,.8)}
-  .brand small{color:var(--muted);letter-spacing:2px;font-size:10px}
-  .hud-right{display:flex;align-items:center;gap:14px}
-  .pill{font-size:11px;letter-spacing:2px;padding:6px 14px;border:1px solid var(--cyan);
-    color:var(--cyan);clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);
-    background:rgba(0,229,255,.08);text-shadow:0 0 8px rgba(0,229,255,.8)}
-  .pill.local{border-color:var(--magenta);color:var(--magenta);
-    background:rgba(255,47,214,.08);text-shadow:0 0 8px rgba(255,47,214,.8)}
-  #clock{font-size:13px;color:var(--muted);letter-spacing:2px}
 
-  main{position:relative;z-index:2;flex:1;display:flex;gap:18px;padding:18px 22px;min-height:0}
-  /* left : reactor */
-  .left{width:300px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:16px}
-  .reactor{position:relative;width:220px;height:220px;margin-top:8px}
-  .ring{position:absolute;inset:0;border-radius:50%;border:2px solid transparent}
-  .r1{border-top-color:var(--cyan);border-right-color:rgba(0,229,255,.25);animation:spin 6s linear infinite;box-shadow:0 0 24px rgba(0,229,255,.25)}
-  .r2{inset:22px;border-bottom-color:var(--magenta);border-left-color:rgba(255,47,214,.25);animation:spin 9s linear infinite reverse}
-  .r3{inset:44px;border:1px dashed rgba(0,229,255,.4);animation:spin 20s linear infinite}
-  .core{position:absolute;inset:78px;border-radius:50%;
-    background:radial-gradient(circle,#e8feff 0%,var(--cyan) 45%,#036 100%);
-    box-shadow:0 0 40px var(--cyan),0 0 90px rgba(0,229,255,.5);
-    animation:pulse 2.4s ease-in-out infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.88);opacity:.75}}
-  .reactor.listening .core{animation-duration:.7s}
-  .reactor.thinking .r1{animation-duration:1.2s}
-  .status-line{font-size:12px;letter-spacing:3px;color:var(--cyan);text-shadow:0 0 10px rgba(0,229,255,.7)}
-  .stats{width:100%;background:rgba(10,20,32,.75);border:1px solid rgba(0,229,255,.25);
-    padding:12px 14px;font-size:11px;line-height:1.9;color:var(--muted);
-    clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));}
-  .stats b{color:var(--cyan);font-weight:normal}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-  .chip{font-family:inherit;font-size:10px;letter-spacing:1px;padding:7px 12px;cursor:pointer;
-    color:var(--cyan);background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.4);
-    clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);transition:.2s}
-  .chip:hover{background:rgba(0,229,255,.2);box-shadow:0 0 14px rgba(0,229,255,.4);color:#fff}
-
-  /* right : chat */
-  .right{flex:1;display:flex;flex-direction:column;min-width:0;
-    background:rgba(10,20,32,.6);border:1px solid rgba(0,229,255,.25);position:relative}
-  .right::before{content:'';position:absolute;top:0;left:10%;right:10%;height:2px;
-    background:linear-gradient(90deg,transparent,var(--cyan),transparent);
-    box-shadow:0 0 12px var(--cyan)}
-  #log{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;min-height:0}
-  #log::-webkit-scrollbar{width:6px}
-  #log::-webkit-scrollbar-thumb{background:var(--cyan-dim)}
-  .msg{max-width:82%;padding:10px 14px;font-size:13px;line-height:1.6;animation:fadeUp .3s ease}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .msg.jarvis{align-self:flex-start;background:rgba(0,229,255,.08);
-    border:1px solid rgba(0,229,255,.35);border-left:3px solid var(--cyan);color:var(--text)}
-  .msg.jarvis .who{color:var(--cyan);font-size:10px;letter-spacing:2px;display:block;margin-bottom:4px}
-  .msg.you{align-self:flex-end;background:rgba(255,47,214,.08);
-    border:1px solid rgba(255,47,214,.35);border-right:3px solid var(--magenta);text-align:right}
-  .msg.you .who{color:var(--magenta);font-size:10px;letter-spacing:2px;display:block;margin-bottom:4px}
-  .msg.sys{align-self:center;font-size:10px;letter-spacing:2px;color:var(--muted);
-    border:1px dashed rgba(91,127,147,.5);padding:6px 16px}
-  .typing{align-self:flex-start;color:var(--cyan);font-size:12px;letter-spacing:2px;animation:blink 1s infinite}
-  @keyframes blink{50%{opacity:.3}}
-
-  #heardTicker{font-size:10px;letter-spacing:1px;color:var(--muted);
-    padding:6px 16px;border-top:1px solid rgba(0,255,65,.15);
-    background:rgba(2,8,4,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #heardTicker.hot{color:var(--cyan)}
-  .inputbar{display:flex;gap:10px;padding:14px;border-top:1px solid rgba(0,229,255,.25);
-    background:rgba(4,10,18,.85);align-items:center}
-  #text{flex:1;font-family:inherit;font-size:14px;padding:12px 16px;color:var(--text);
-    background:#060d16;border:1px solid rgba(0,229,255,.4);outline:none}
-  #text:focus{border-color:var(--cyan);box-shadow:0 0 14px rgba(0,229,255,.3)}
-  .btn{font-family:inherit;cursor:pointer;border:1px solid var(--cyan);color:var(--cyan);
-    background:rgba(0,229,255,.08);padding:12px 18px;font-size:12px;letter-spacing:2px;
-    clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);transition:.2s}
-  .btn:hover{background:rgba(0,229,255,.25);color:#fff;box-shadow:0 0 16px rgba(0,229,255,.5)}
-  #mic{font-size:18px;padding:10px 16px;border-radius:50%;clip-path:none;width:52px;height:52px;
-    display:flex;align-items:center;justify-content:center}
-  #mic.on{background:rgba(255,47,214,.25);border-color:var(--magenta);color:var(--magenta);
-    animation:micpulse 1s infinite}
-  @keyframes micpulse{50%{box-shadow:0 0 26px rgba(255,47,214,.8)}}
-  #langBtn{border-color:var(--magenta);color:var(--magenta);background:rgba(255,47,214,.08)}
-  footer{position:relative;z-index:2;text-align:center;padding:8px;font-size:10px;
-    letter-spacing:3px;color:var(--muted);border-top:1px solid rgba(0,229,255,.15)}
-  /* boot overlay */
-  #boot{position:fixed;inset:0;z-index:100;background:#02040a;display:flex;
-    flex-direction:column;align-items:center;justify-content:center;gap:14px;
-    transition:opacity .8s ease}
-  #boot.done{opacity:0;pointer-events:none}
-  #boot .b-title{font-size:34px;letter-spacing:12px;color:var(--cyan);
-    text-shadow:0 0 30px rgba(0,229,255,.9);animation:blink 1.2s infinite}
-  #boot .b-sub{font-size:11px;letter-spacing:4px;color:var(--muted)}
-  #bootBarWrap{width:min(420px,70vw);height:4px;background:rgba(0,229,255,.15)}
-  #bootBar{height:100%;width:0;background:var(--cyan);box-shadow:0 0 14px var(--cyan)}
-  /* holographic tick ring */
-  .ticks{position:absolute;inset:6px;border-radius:50%;pointer-events:none;
-    background:repeating-conic-gradient(rgba(0,229,255,.55) 0deg 1.5deg,transparent 1.5deg 9deg);
-    -webkit-mask:radial-gradient(circle,transparent 64%,#000 65%,#000 72%,transparent 73%);
-    mask:radial-gradient(circle,transparent 64%,#000 65%,#000 72%,transparent 73%);
-    animation:spin 30s linear infinite}
-  #fsBtn{border-color:var(--cyan)}
-  /* settings modal */
-  #settingsModal{position:fixed;inset:0;z-index:200;display:none;
-    align-items:center;justify-content:center;background:rgba(2,6,12,.8)}
-  #settingsModal.open{display:flex}
-  .modal-box{width:min(460px,90vw);background:var(--panel);border:1px solid var(--cyan);
-    padding:26px;clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px));
-    box-shadow:0 0 40px rgba(0,229,255,.25)}
-  .modal-box h2{font-size:16px;letter-spacing:4px;color:var(--cyan);margin-bottom:6px}
-  .modal-box p{font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:14px}
-  .modal-box p a{color:var(--cyan)}
-  #apiKey{width:100%;font-family:inherit;font-size:13px;padding:10px 12px;margin-bottom:12px;
-    color:var(--text);background:#060d16;border:1px solid rgba(0,229,255,.4);outline:none}
-  #apiKey:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,229,255,.3)}
-  .modal-row{display:flex;gap:10px;justify-content:flex-end}
-  /* ---------- themes ---------- */
-  [data-theme="ironman"]{--bg:#04070d;--panel:#0a1420;--cyan:#00e5ff;--cyan-dim:#0e5a6e;
-    --magenta:#ff2fd6;--text:#c9f6ff;--muted:#5b7f93}
-  [data-theme="cyberpunk"]{--bg:#0d0217;--panel:#180a2e;--cyan:#ff2fd6;--cyan-dim:#6e0e54;
-    --magenta:#9d4edd;--text:#ffd7f4;--muted:#9a6bb0}
-  /* ---------- AI face inside reactor ---------- */
-  #face{position:absolute;inset:0;margin:auto;width:148px;height:148px;z-index:5}
-  /* ---------- voice state + camera ---------- */
-  #voiceState{margin-top:10px;font-size:11px}
-  #voiceState.live{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(0,255,65,.35)}
-  #voiceState.speaking{border-color:var(--magenta);color:var(--magenta);box-shadow:0 0 12px rgba(255,47,214,.35)}
-  .cambox{margin-top:12px;border:1px solid rgba(0,255,65,.25);background:rgba(2,8,4,.6);
-    padding:8px;position:relative}
-  .cam-label{font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px}
-  #camFeed{width:100%;aspect-ratio:4/3;object-fit:cover;display:none;background:#000}
-  #camMsg{font-size:10px;color:var(--muted);letter-spacing:1px;padding:14px 4px;text-align:center}
-  /* ---------- settings tabs ---------- */
-  .tabs{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
-  .tab{flex:1;font-family:inherit;font-size:10px;letter-spacing:1px;padding:8px 4px;cursor:pointer;
-    background:transparent;color:var(--muted);border:1px solid rgba(0,255,65,.25)}
-  .tab.on{color:#02120a;background:var(--cyan);border-color:var(--cyan);font-weight:bold}
-  .tabpage{display:none}
-  .tabpage.on{display:block;animation:fadeUp .25s ease}
-  .theme-row{display:flex;gap:8px;margin:6px 0 4px}
-  .theme-btn{flex:1;font-family:inherit;font-size:11px;letter-spacing:1px;padding:12px 4px;cursor:pointer;
-    background:transparent;color:var(--text);border:1px solid var(--muted)}
-  .theme-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 14px rgba(0,255,65,.3);font-weight:bold}
-  .setline{display:flex;gap:8px;align-items:center;font-size:11px;letter-spacing:1px;
-    color:var(--muted);cursor:pointer;margin:10px 0}
-  .setline input{accent-color:var(--cyan);width:16px;height:16px}
-  .gesture-table{font-size:10px;color:var(--muted);line-height:2;letter-spacing:.5px;margin-top:6px}
-  .gesture-table b{color:var(--text)}
-  #brainBadge{font-size:11px;letter-spacing:2px;margin-bottom:14px;display:block}
-  @media(max-width:760px){.left{display:none}main{padding:10px}}
-</style>
 </head>
 <body>
 <div class="grid-bg"></div>
 <canvas id="matrix"></canvas>
-<div class="glow-orb orb1"></div>
-<div class="glow-orb orb2"></div>
 <div class="scanlines"></div>
 
 <div id="boot">
   <div class="b-title">CYBER AI</div>
-  <div class="b-sub">NEURAL INTERFACE // ROOT ACCESS</div>
+  <div class="b-sub">MK-I NEURAL INTERFACE // ROOT ACCESS</div>
   <div id="bootBarWrap"><div id="bootBar"></div></div>
   <div class="b-sub" id="bootMsg">INITIALIZING...</div>
 </div>
 
 <header>
   <div class="brand">
-    <h1>CYBER AI</h1>
-    <small>// ROOT ACCESS GRANTED — HAND + VOICE CONTROL</small>
+    <h1>CYBER AI <span>/ MK-I</span></h1>
+    <small>ADVANCED VOICE + GESTURE INTELLIGENCE</small>
   </div>
+  <div class="sys-online">● SYSTEMS ONLINE</div>
   <div class="hud-right">
-    <span class="pill local">● LOCAL</span>
-    <span class="pill" id="gesturePill" title="hand tracking">🖐 ...</span>
+    <span class="pill" id="gesturePill" title="camera hand tracking">🖐 ...</span>
     <span class="pill" id="statusPill">● ONLINE</span>
-    <span id="clock">--:--</span>
+    <div class="clockbox"><div id="clock">--:--:--</div><div id="date">...</div></div>
     <button class="btn" id="gearBtn" title="settings">⚙</button>
     <button class="btn" id="fsBtn" title="fullscreen">⛶</button>
   </div>
 </header>
 
 <main>
-  <section class="left">
-    <div class="reactor" id="reactor">
-      <div class="ticks"></div>
-      <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
-      <canvas id="face" width="148" height="148"></canvas>
-      <div class="core" style="display:none"></div>
+  <section class="col">
+    <div class="panel">
+      <div class="panel-head">DIAGNOSTICS <span>● LIVE</span></div>
+      <div class="meter"><div class="m-top"><span>CORE LOAD</span><b id="mCpu">18%</b></div><div class="m-bar"><i id="mCpuBar" style="width:18%"></i></div></div>
+      <div class="meter"><div class="m-top"><span>MEMORY</span><b id="mMem">42%</b></div><div class="m-bar"><i id="mMemBar" style="width:42%"></i></div></div>
+      <div class="meter"><div class="m-top"><span>NETWORK</span><b id="mNet">96%</b></div><div class="m-bar"><i id="mNetBar" style="width:96%"></i></div></div>
+      <div class="meter"><div class="m-top"><span>VOICE ENGINE</span><b id="mVoice">READY</b></div><div class="m-bar"><i id="mVoiceBar" style="width:100%"></i></div></div>
+      <div class="statgrid">
+        <div><b id="sResp">-- ms</b><span>RESPONSE</span></div>
+        <div><b id="sVer">7.3</b><span>CORE BUILD</span></div>
+        <div><b>EN / SI</b><span>LANGUAGE</span></div>
+        <div><b>LOCAL</b><span>SESSION</span></div>
+      </div>
     </div>
-    <div class="pill" id="voiceState">● STANDBY</div>
-    <div class="cambox">
-      <div class="cam-label">◉ OPTICAL SENSOR</div>
+    <div class="panel">
+      <div class="panel-head">COMMAND DECK</div>
+      <div class="cmddeck">
+        <button class="chip" data-cmd="open youtube">Open YouTube<em>WEB</em></button>
+        <button class="chip" data-cmd="what time is it">Check the time<em>LOCAL</em></button>
+        <button class="chip" data-cmd="tell me a joke">Tell me a joke<em>AI</em></button>
+        <button class="chip" data-cmd="weather in Colombo">Weather query<em>WEB</em></button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">OPTICAL SENSOR</div>
       <img id="camFeed" alt="camera feed">
       <div id="camMsg">camera offline</div>
     </div>
-    <div class="status-line" id="statusLine">SYSTEMS NOMINAL</div>
-    <div class="stats" id="stats">
-      VOICE IN .... <b>EN + සිං</b><br>
-      VOICE OUT ... <b>EN + සිං</b><br>
-      BRAIN ....... <b>GEMINI</b><br>
-      MODE ........ <b>LOCALHOST</b>
+  </section>
+
+  <section class="col">
+    <div class="panel">
+      <div class="panel-head"><span>NEURAL LINK&nbsp; <b id="neuralState">STABLE</b></span><span id="modeState">STANDBY MODE</span></div>
+      <div class="core-viz" id="reactor">
+        <div class="viz-ring vr1"></div>
+        <div class="viz-ring vr2"></div>
+        <div class="viz-ring vr3"></div>
+        <div class="viz-sweep"></div>
+        <canvas id="face" width="170" height="170"></canvas>
+      </div>
+      <div class="pill-row">
+        <span class="pill" id="voiceState">● STANDBY</span>
+        <span class="pill" id="micStatus" title="microphone">🎤 ...</span>
+      </div>
+      <div class="status-line" id="statusLine">SYSTEMS NOMINAL</div>
     </div>
-    <div class="chips">
-      <button class="chip" data-cmd="what time is it">TIME</button>
-      <button class="chip" data-cmd="take a screenshot">SCREENSHOT</button>
-      <button class="chip" data-cmd="volume up">VOL +</button>
-      <button class="chip" data-cmd="weather">WEATHER</button>
-      <button class="chip" data-cmd="tell me a joke">JOKE</button>
-      <button class="chip" data-cmd="open youtube">YOUTUBE</button>
+    <div class="panel chat-panel">
+      <div id="log"></div>
+      <div id="heardTicker">🎤 mic standby — click anywhere, allow mic, then speak your command</div>
+      <div class="inputbar">
+        <button class="btn" id="langBtn" title="voice language">EN</button>
+        <input id="text" placeholder="Type a command..." autocomplete="off">
+        <button class="btn send" id="send" title="send">➤</button>
+      </div>
     </div>
   </section>
 
-  <section class="right">
-    <div id="log"></div>
-    <div id="heardTicker">🎤 mic standby — click anywhere, allow mic, then speak your command</div>
-    <div class="inputbar">
-      <button class="btn" id="langBtn" title="voice language">EN</button>
-      <span class="pill" id="micStatus" title="microphone">🎤 ...</span>
-      <input id="text" placeholder="Type a command, or just speak" autocomplete="off">
-      <button class="btn" id="send">SEND</button>
+  <section class="col">
+    <div class="panel">
+      <div class="panel-head">ACTIVITY <span>SESSION 01</span></div>
+      <div id="activityLog"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">SYSTEMS</div>
+      <div class="syslist">
+        <div class="sysrow"><div>🖥️ <b>System control</b><small>Windows tools &amp; shortcuts</small></div><em class="ok">READY</em></div>
+        <div class="sysrow"><div>🧠 <b>Gemini core</b><small>Free AI answers</small></div><em id="stBrain" class="warn">...</em></div>
+        <div class="sysrow"><div>🎤 <b>Voice I/O</b><small>Listen &amp; speak</small></div><em id="stVoice" class="ok">...</em></div>
+        <div class="sysrow"><div>🖐️ <b>Camera</b><small>Hand tracking</small></div><em id="stCam" class="warn">...</em></div>
+        <div class="sysrow"><div>🌐 <b>Web access</b><small>Search &amp; information</small></div><em class="ok">ONLINE</em></div>
+      </div>
     </div>
   </section>
 </main>
-<footer>SECURE LOCAL LINK &nbsp;//&nbsp; NO CLOUD &nbsp;//&nbsp; CYBER AI v7.2</footer>
+
+<footer>
+  <span>LOCAL INTERFACE</span>
+  <span class="warn">SECURE LOCAL LINK // NO CLOUD</span>
+  <span>CYBER AI MK-I / 2026</span>
+</footer>
 
 <div id="settingsModal">
   <div class="modal-box">
@@ -320,6 +323,7 @@
     </div>
   </div>
 </div>
+
 
 <script>
 const log = document.getElementById('log');
@@ -878,5 +882,92 @@ setInterval(drawFace, 50);
   addMsg('jarvis', hello); speakReply(hello);
 })();
 </script>
+<script>
+// ---------- MK-I extras: diagnostics, activity, live statuses ----------
+// default theme = iron man cyan (the MK-I look); user choice wins
+setTheme(localStorage.getItem('cyber_theme') || 'ironman');
+
+document.getElementById('date').textContent =
+  new Date().toLocaleDateString('en-GB', {weekday:'short', day:'2-digit', month:'short', year:'numeric'}).toUpperCase();
+
+// activity log
+function logActivity(t){
+  const el = document.getElementById('activityLog');
+  if(!el) return;
+  const d = new Date();
+  const ts = [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2,'0')).join(':');
+  const row = document.createElement('div');
+  row.className = 'act';
+  const time = document.createElement('time'); time.textContent = ts;
+  const dot = document.createElement('i'); dot.textContent = '●';
+  const sp = document.createElement('span'); sp.textContent = t;
+  row.append(time, dot, sp);
+  el.prepend(row);
+  while(el.children.length > 30) el.lastChild.remove();
+}
+['Interface core initialized','Voice channel calibrated','Command modules loaded','AI core link available']
+  .forEach((t,i) => setTimeout(() => logActivity(t), 500*(i+1)));
+
+// live diagnostic meters (ambient animation)
+const _meters = {mCpu:[18,'mCpuBar'], mMem:[42,'mMemBar'], mNet:[88,'mNetBar']};
+setInterval(() => {
+  for(const k in _meters){
+    let v = _meters[k][0] + (Math.random()*10 - 5);
+    v = Math.max(5, Math.min(99, v));
+    _meters[k][0] = v;
+    const lbl = document.getElementById(k), bar = document.getElementById(_meters[k][1]);
+    if(lbl) lbl.textContent = Math.round(v) + '%';
+    if(bar) bar.style.width = v + '%';
+  }
+}, 2200);
+
+// mode readout follows voice state
+const _setVS = setVoiceState;
+setVoiceState = function(s){
+  _setVS(s);
+  const mm = document.getElementById('modeState');
+  if(mm) mm.textContent = s + ' MODE';
+  const ns = document.getElementById('neuralState');
+  if(ns) ns.textContent = (s === 'SPEAKING' || s === 'THINKING') ? 'ACTIVE' : 'STABLE';
+};
+
+// response time + activity on every command
+const _sendText = sendText;
+sendText = async function(t){
+  const t0 = performance.now();
+  logActivity('Command: ' + String(t).slice(0, 42));
+  await _sendText(t);
+  const ms = Math.round(performance.now() - t0);
+  const el = document.getElementById('sResp');
+  if(el) el.textContent = ms + ' ms';
+};
+
+// live system statuses
+async function refreshMkSystems(){
+  try{
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    const b = document.getElementById('stBrain');
+    if(b){
+      if(s.last_error){ b.textContent = 'ERROR'; b.className = 'bad'; b.title = s.last_error; }
+      else if(s.brain){ b.textContent = 'LINKED'; b.className = 'ok'; b.title = ''; }
+      else if(s.has_key){ b.textContent = 'UNVERIFIED'; b.className = 'warn'; }
+      else { b.textContent = 'OFFLINE'; b.className = 'bad'; }
+    }
+  }catch(e){}
+  try{
+    const r = await fetch('/api/gesture', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:'{}'});
+    const s = await r.json();
+    const c = document.getElementById('stCam');
+    if(c){ c.textContent = s.running ? 'TRACKING' : 'OFF'; c.className = s.running ? 'ok' : 'bad'; }
+  }catch(e){}
+  const v = document.getElementById('stVoice');
+  if(v){ v.textContent = (typeof recOn !== 'undefined' && recOn) ? 'READY' : 'IDLE'; v.className = 'ok'; }
+}
+setInterval(refreshMkSystems, 5000);
+setTimeout(refreshMkSystems, 1500);
+</script>
+
 </body>
 </html>
