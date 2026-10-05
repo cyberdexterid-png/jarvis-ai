@@ -328,8 +328,19 @@ async function refreshBrain(){
   try{
     const r = await fetch('/api/status');
     const s = await r.json();
-    brainBadge.textContent = 'BRAIN: ' + (s.brain ? '● CONNECTED' : '○ OFFLINE (no key)');
-    brainBadge.style.color = s.brain ? 'var(--cyan)' : 'var(--magenta)';
+    if(s.brain){
+      brainBadge.textContent = 'BRAIN: ● CONNECTED';
+      brainBadge.style.color = 'var(--cyan)';
+    } else if(s.has_key && !s.sdk){
+      brainBadge.textContent = 'BRAIN: ○ KEY SAVED, but google-genai missing → run: pip install -r requirements.txt';
+      brainBadge.style.color = 'var(--magenta)';
+    } else if(s.has_key){
+      brainBadge.textContent = 'BRAIN: ○ KEY SAVED, connection failed — check the key';
+      brainBadge.style.color = 'var(--magenta)';
+    } else {
+      brainBadge.textContent = 'BRAIN: ○ OFFLINE (no key)';
+      brainBadge.style.color = 'var(--muted)';
+    }
   }catch(e){ brainBadge.textContent = 'BRAIN: unknown'; }
 }
 document.getElementById('gearBtn').onclick = e => {
@@ -339,6 +350,7 @@ document.getElementById('closeSettings').onclick = () => modal.classList.remove(
 modal.onclick = e => { if(e.target === modal) modal.classList.remove('open'); };
 document.getElementById('saveKey').onclick = async () => {
   const key = document.getElementById('apiKey').value.trim();
+  if(!key){ sysMsg('Paste a key first.'); return; }
   brainBadge.textContent = 'BRAIN: saving...';
   try{
     const r = await fetch('/api/config', {method:'POST',
@@ -347,8 +359,16 @@ document.getElementById('saveKey').onclick = async () => {
     const s = await r.json();
     document.getElementById('apiKey').value = '';
     await refreshBrain();
-    sysMsg(s.brain ? 'API key saved — full AI brain online. 🧠' : 'API key removed — offline mode.');
-  }catch(e){ sysMsg('Could not save the key.'); }
+    if(!s.ok){
+      sysMsg('Save FAILED: ' + (s.error || 'unknown error'));
+    } else if(s.brain){
+      sysMsg('API key saved — full AI brain online. 🧠');
+    } else if(!s.sdk){
+      sysMsg('Key saved ✓ but google-genai package missing → run: pip install -r requirements.txt');
+    } else {
+      sysMsg('Key saved, but connection failed — check the key is correct.');
+    }
+  }catch(e){ sysMsg('Could not reach the server. Is Jarvis running?'); }
 };
 refreshBrain();
 
