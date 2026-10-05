@@ -107,9 +107,39 @@ def save_config(cfg):
 
 
 def get_api_key():
-    """Env var wins, otherwise the key saved via the web UI."""
-    return (os.environ.get("GEMINI_API_KEY", "").strip()
-            or load_config().get("gemini_api_key", "").strip())
+    """Priority: env var -> api_key.txt -> key saved via web UI."""
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    try:
+        with open(KEY_FILE, "r", encoding="utf-8") as f:
+            file_key = f.read().strip()
+        if file_key and file_key != KEY_PLACEHOLDER and " " not in file_key:
+            return file_key
+    except Exception:
+        pass
+    return load_config().get("gemini_api_key", "").strip()
+
+
+def _app_base():
+    """Folder next to the script (or exe) — where api_key.txt lives."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+KEY_FILE = os.path.join(_app_base(), "api_key.txt")
+KEY_PLACEHOLDER = "PASTE_YOUR_FREE_GEMINI_KEY_HERE"
+
+
+def ensure_key_file():
+    """Create api_key.txt with a placeholder so the user knows where to paste."""
+    try:
+        if not os.path.exists(KEY_FILE):
+            with open(KEY_FILE, "w", encoding="utf-8") as f:
+                f.write(KEY_PLACEHOLDER + "\n")
+    except Exception:
+        pass
 
 
 def brain_connected():
@@ -782,6 +812,7 @@ def run_web(port=8080):
     global WEB_MODE, _web_lock
     WEB_MODE = True
     _web_lock = threading.Lock()
+    ensure_key_file()
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     hud_path = resource_path("web_hud.html")
@@ -906,6 +937,7 @@ def run_web(port=8080):
 
 # ---------------------------------------------------------------------- main
 def run_terminal():
+    ensure_key_file()
     speak("Systems online. Speak or type a command. Say 'exit' to quit.")
     while True:
         try:
