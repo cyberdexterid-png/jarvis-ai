@@ -58,7 +58,7 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "6.0.0"
+VERSION = "7.0.0"
 GEMINI_MODEL = "gemini-2.0-flash"   # fast + free tier friendly
 SILENT = os.environ.get("JARVIS_SILENT") == "1"   # for testing: no audio
 WEB_MODE = False                    # True when serving the web HUD
