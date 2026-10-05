@@ -851,6 +851,47 @@ def run_web(port=8080):
                                  "version": VERSION,
                                  "has_key": bool(get_api_key()),
                                  "sdk": genai_client is not None})
+            elif self.path == "/cam_feed":
+                # MJPEG stream of the gesture camera for the web UI preview
+                try:
+                    import gesture as gesture_mod
+                    import cv2 as cv2mod
+                    import time as timemod
+                except ImportError:
+                    self.send_error(503, "camera packages not installed")
+                    return
+                if not gesture_mod.GESTURE_AVAILABLE:
+                    self.send_error(503, "camera packages not installed")
+                    return
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type",
+                                     "multipart/x-mixed-replace; boundary=frame")
+                    self.end_headers()
+                    idle = 0
+                    while True:
+                        frame = gesture_mod.get_preview_frame()
+                        if frame is None:
+                            idle += 1
+                            if idle > 100:  # ~10s with no camera -> stop
+                                break
+                            timemod.sleep(0.1)
+                            continue
+                        idle = 0
+                        ok, jpg = cv2mod.imencode(
+                            ".jpg", frame, [cv2mod.IMWRITE_JPEG_QUALITY, 60])
+                        if not ok:
+                            continue
+                        data = jpg.tobytes()
+                        self.wfile.write(
+                            b"--frame\r\nContent-Type: image/jpeg\r\n"
+                            b"Content-Length: " + str(len(data)).encode() +
+                            b"\r\n\r\n" + data + b"\r\n")
+                        timemod.sleep(0.12)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                except Exception:
+                    pass
             else:
                 self.send_error(404)
 
