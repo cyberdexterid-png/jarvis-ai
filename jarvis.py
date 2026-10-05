@@ -145,6 +145,42 @@ def ensure_key_file():
 def brain_connected():
     return bool(get_api_key()) and genai_client is not None
 
+
+_last_brain_error = ""
+
+
+def _friendly_gemini_error(e):
+    """Short human-readable version of a Gemini API error."""
+    msg = str(e).strip().replace("\n", " ")
+    low = msg.lower()
+    if "api key not valid" in low or "api_key_invalid" in low or "invalid api key" in low:
+        return "API key not valid — grab a fresh one from aistudio.google.com/apikey"
+    if "quota" in low:
+        return "API quota exceeded — try again later or use a new key"
+    if "permission" in low or "denied" in low or "403" in low:
+        return "API access denied for this key — check AI Studio settings"
+    if "model" in low and "not found" in low:
+        return f"model {GEMINI_MODEL} not available"
+    if "timeout" in low or "unreachable" in low or "failed to connect" in low:
+        return "could not reach Google servers — check internet"
+    return (msg[:150] + "...") if len(msg) > 150 else (msg or "unknown error")
+
+
+def test_gemini_key(api_key):
+    """Make one tiny real API call. Returns (ok, error_message)."""
+    if genai_client is None:
+        return False, "google-genai package not installed — run: pip install -r requirements.txt"
+    if not api_key:
+        return False, "no API key set"
+    try:
+        client = genai_client.Client(api_key=api_key)
+        resp = client.models.generate_content(
+            model=GEMINI_MODEL, contents="Reply with the single word: ok")
+        _ = resp.text
+        return True, ""
+    except Exception as e:
+        return False, _friendly_gemini_error(e)
+
 _engine = None
 _recognizer = None
 _chat = None
@@ -348,13 +384,18 @@ OFFLINE_ANSWERS = [
 
 def ask_brain(question):
     """Ask Gemini; fall back to small offline answers if no API key."""
+    global _last_brain_error
     chat = _get_chat()
     if chat is not None:
         try:
             resp = chat.send_message(question)
+            _last_brain_error = ""
             return resp.text.strip()
         except Exception as e:
+            _last_brain_error = _friendly_gemini_error(e)
             print(f"[Gemini error: {e}]")
+            return ("⚠️ Gemini API error: " + _last_brain_error +
+                    " — check your key in ⚙ Settings → API.")
     for pattern, answer in OFFLINE_ANSWERS:
         if re.search(pattern, question, re.IGNORECASE):
             return answer
@@ -850,7 +891,8 @@ def run_web(port=8080):
                 send_json(self, {"brain": brain_connected(),
                                  "version": VERSION,
                                  "has_key": bool(get_api_key()),
-                                 "sdk": genai_client is not None})
+                                 "sdk": genai_client is not None,
+                                 "last_error": _last_brain_error})
             elif self.path == "/cam_feed":
                 # MJPEG stream of the gesture camera for the web UI preview
                 try:
@@ -924,10 +966,17 @@ def run_web(port=8080):
                 ok, err = save_config(cfg)
                 global _chat
                 _chat = None  # reconnect with the new key next time
+                key_now = get_api_key()
+                # validate with a real API call so the user sees the TRUE result
+                valid, key_err = test_gemini_key(key_now) if key_now else (False, "no key")
+                if valid:
+                    global _last_brain_error
+                    _last_brain_error = ""
                 send_json(self, {"ok": ok, "error": err,
-                                 "brain": brain_connected(),
+                                 "brain": valid,
+                                 "key_valid": valid, "key_error": key_err,
                                  "sdk": genai_client is not None,
-                                 "has_key": bool(get_api_key())})
+                                 "has_key": bool(key_now)})
                 return
             if self.path != "/api/command":
                 self.send_error(404)
