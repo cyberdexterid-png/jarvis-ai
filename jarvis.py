@@ -757,42 +757,45 @@ def run_hud():
 # ------------------------------------------------------------ gesture control
 _gesture_thread = None
 _gesture_stop_event = None
+_gesture_reason = "not started yet"
 
 
 def gesture_running():
     return _gesture_thread is not None and _gesture_thread.is_alive()
 
 
+def gesture_status():
+    return {"running": gesture_running(), "reason": _gesture_reason}
+
+
 def start_gesture_mode():
     """Start Iron Man hand tracking in the background. True if running."""
-    global _gesture_thread, _gesture_stop_event
+    global _gesture_thread, _gesture_stop_event, _gesture_reason
     if gesture_running():
+        _gesture_reason = "running"
         return True
     try:
         import gesture as gesture_mod
     except Exception as e:
+        _gesture_reason = f"gesture.py error: {e}"
         print(f"[gesture unavailable: {e}]")
         return False
     if not gesture_mod.GESTURE_AVAILABLE:
-        print("[gesture needs: pip install opencv-python mediapipe pyautogui]")
+        _gesture_reason = "missing packages — run: pip install opencv-python mediapipe pyautogui"
+        print(f"[gesture needs: {_gesture_reason}]")
         return False
-    try:
-        import cv2
-        probe = cv2.VideoCapture(0)
-        ok = probe.isOpened()
-        probe.release()
-        if not ok:
-            print("[gesture: no camera found]")
-            return False
-    except Exception as e:
-        print(f"[gesture camera probe failed: {e}]")
+    cam_index = gesture_mod.find_camera()
+    if cam_index is None:
+        _gesture_reason = "no camera found (tried 0,1,2) — is it used by another app?"
+        print("[gesture: no camera found]")
         return False
     import threading
     _gesture_stop_event = threading.Event()
     _gesture_thread = threading.Thread(
-        target=gesture_mod.run, args=(_gesture_stop_event,), daemon=True)
+        target=gesture_mod.run, args=(_gesture_stop_event, cam_index), daemon=True)
     _gesture_thread.start()
-    print("[gesture control ON - camera active, always listening for hands]")
+    _gesture_reason = "running"
+    print(f"[gesture control ON - camera {cam_index} active]")
     return True
 
 
@@ -863,7 +866,7 @@ def run_web(port=8080):
                     start_gesture_mode()
                 elif action == "stop":
                     stop_gesture_mode()
-                send_json(self, {"running": gesture_running()})
+                send_json(self, gesture_status())
                 return
             if self.path == "/api/config":
                 try:
