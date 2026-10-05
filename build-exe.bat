@@ -1,8 +1,8 @@
 @echo off
-title Build JARVIS.exe
+title Build CyberAI.exe
 cd /d "%~dp0"
 echo ============================================
-echo  Building JARVIS.exe  (one-time, few minutes)
+echo  Building CyberAI.exe  (one-time, few minutes)
 echo ============================================
 echo.
 
@@ -21,7 +21,7 @@ if exist "jarvis.ico" set ICONARG=--icon jarvis.ico
 python -m PyInstaller --noconfirm --clean ^
   --onefile ^
   --noconsole ^
-  --name JARVIS ^
+  --name CyberAI ^
   %ICONARG% ^
   --add-data "web_hud.html;." ^
   --hidden-import pyttsx3.drivers.sapi5 ^
@@ -29,8 +29,8 @@ python -m PyInstaller --noconfirm --clean ^
 
 echo.
 echo ============================================
-if exist "dist\JARVIS.exe" (
-  echo  DONE! Your file: dist\JARVIS.exe
+if exist "dist\CyberAI.exe" (
+  echo  DONE! Your file: dist\CyberAI.exe
   echo  Share that single file - no Python needed!
 ) else (
   echo  Build FAILED - see errors above.
