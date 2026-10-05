@@ -37,6 +37,24 @@ HELP = (
     "2 fingers=vol+ | 3 fingers=vol- | Palm=mute | Q=quit"
 )
 
+# latest camera frame for the web UI preview (thread-safe)
+import threading as _threading
+_frame_lock = _threading.Lock()
+latest_frame = None
+
+
+def get_preview_frame():
+    """Return a small BGR frame copy for the web preview, or None."""
+    with _frame_lock:
+        return None if latest_frame is None else latest_frame.copy()
+
+
+def _publish_frame(frame):
+    global latest_frame
+    small = cv2.resize(frame, (320, 240))
+    with _frame_lock:
+        latest_frame = small
+
 
 def _landmarks(hand_lms):
     return [(p.x, p.y) for p in hand_lms.landmark]
@@ -135,6 +153,7 @@ def run(stop_event=None, cam_index=0):
 
     last_click = 0.0
     last_action = 0.0
+    frame_count = 0
     print("[CYBER AI gesture control ON] " + HELP)
     cv2.namedWindow("CYBER AI - Gesture Control", cv2.WINDOW_NORMAL)
 
@@ -198,6 +217,9 @@ def run(stop_event=None, cam_index=0):
             cv2.putText(frame, "Q = quit", (12, 64),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 120, 120), 1)
             cv2.imshow("CYBER AI - Gesture Control", frame)
+            if frame_count % 3 == 0:
+                _publish_frame(frame)
+            frame_count += 1
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
