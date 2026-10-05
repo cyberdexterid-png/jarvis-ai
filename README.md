@@ -19,6 +19,17 @@ Your own CYBER AI for the laptop. **100% free — no card needed.**
 
 Camera starts automatically. Disable with `python jarvis.py --no-gesture`.
 
+## ⚡ Quick start (2 minutes)
+
+1. Install Python 3.10+ (tick "Add to PATH"), then:
+   ```
+   pip install -r requirements.txt
+   ```
+2. Double-click **`start.bat`** — paste your free Gemini key when asked
+   (from [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no card).
+   It's saved permanently — you type it only once.
+3. Click anywhere on the page, allow the mic, say **"CYBER"** + your command.
+
 ## 🚀 Make the EXE (release build)
 
 No Python needed for the end user — one file does everything:
