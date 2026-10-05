@@ -19,6 +19,16 @@ Your own CYBER AI for the laptop. **100% free — no card needed.**
 
 Camera starts automatically. Disable with `python jarvis.py --no-gesture`.
 
+## 🔑 API key — 3 easy ways (pick one)
+
+1. **`api_key.txt`** (easiest) — open it in Notepad, replace the placeholder
+   with your key, save. Done — the app reads it every start.
+2. **`start.bat`** — asks for the key on first run and saves it permanently.
+3. **Web UI** — click ⚙ Settings, paste the key, SAVE KEY.
+
+Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (no card).
+⚠️ Never upload your real key to GitHub — the repo copy is a placeholder only.
+
 ## ⚡ Quick start (2 minutes)
 
 1. Install Python 3.10+ (tick "Add to PATH"), then:
