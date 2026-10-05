@@ -224,6 +224,11 @@
       → <b>Get API key</b>, then paste it below. It is stored only on this PC.
       <br>Tip: you can also paste it into <b>api_key.txt</b> next to start.bat.</p>
     <input id="apiKey" type="password" placeholder="Paste Gemini API key here" autocomplete="off">
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px;
+      font-size:11px;letter-spacing:1px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="wakeToggle" checked style="accent-color:#00ff41">
+      REQUIRE WAKE WORD "CYBER" (off = every phrase is a command)
+    </label>
     <div class="modal-row">
       <button class="btn" id="closeSettings">CLOSE</button>
       <button class="btn" id="saveKey">SAVE KEY</button>
@@ -313,22 +318,36 @@ function updateMicUI(){
   micStatus.style.borderColor = recOn ? 'var(--cyan)' : 'var(--magenta)';
   micStatus.style.color = recOn ? 'var(--cyan)' : 'var(--magenta)';
 }
+// wake word on/off (saved)
+let wakeRequired = localStorage.getItem('cyber_wake') !== 'off';
+const wakeToggle = document.getElementById('wakeToggle');
+wakeToggle.checked = wakeRequired;
+wakeToggle.onchange = e => {
+  wakeRequired = e.target.checked;
+  localStorage.setItem('cyber_wake', wakeRequired ? 'on' : 'off');
+  sysMsg('Wake word ' + (wakeRequired ? 'ON — say "CYBER" before commands.'
+                                      : 'OFF — everything you say is a command.'));
+};
+
 function handleVoice(t){
   const ticker = document.getElementById('heardTicker');
   ticker.textContent = '🎤 heard: "' + t + '"';
-  const m = t.match(/\b(hey\s+|ok\s+)?(cyber|siber)\b/i);
-  if(!m){
-    ticker.textContent += ' — say "CYBER" first!';
-    ticker.classList.remove('hot');
-    return;
+  let cmd = t;
+  if(wakeRequired){
+    const m = t.match(/\b(hey\s+|ok\s+)?(cyber|siber)\b/i);
+    if(!m){
+      ticker.textContent += ' — say "CYBER" first! (or turn wake word off in ⚙)';
+      ticker.classList.remove('hot');
+      return;
+    }
+    cmd = t.slice(m.index + m[0].length).trim().replace(/^[,.\s]+/, '');
+    if(!cmd){
+      const hello = "Yes? I'm listening.";
+      addMsg('jarvis', hello); speakReply(hello);
+      return;
+    }
   }
   ticker.classList.add('hot');
-  let cmd = t.slice(m.index + m[0].length).trim().replace(/^[,.\s]+/, '');
-  if(!cmd){
-    const hello = "Yes? I'm listening.";
-    addMsg('jarvis', hello); speakReply(hello);
-    return;
-  }
   addMsg('sys', '🎤 heard: "' + t + '"');
   sendText(cmd);
 }
@@ -375,18 +394,30 @@ document.addEventListener('click', function initMic(){
 });
 updateMicUI();
 
-// gesture status indicator (camera is auto-started by the server)
+// gesture status indicator (camera is auto-started by the server;
+// click the pill to retry if the camera failed to start)
 const gesturePill = document.getElementById('gesturePill');
+gesturePill.style.cursor = 'pointer';
 async function refreshGesture(){
   try{
     const r = await fetch('/api/gesture', {method:'POST',
       headers:{'Content-Type':'application/json'}, body:'{}'});
     const s = await r.json();
-    gesturePill.textContent = s.running ? '🖐 GESTURE ON' : '🖐 NO CAM';
+    gesturePill.textContent = s.running ? '🖐 GESTURE ON' : '🖐 CAM OFF — retry?';
+    gesturePill.title = (s.reason || '') + ' (click to retry camera)';
     gesturePill.style.borderColor = s.running ? 'var(--cyan)' : 'var(--muted)';
     gesturePill.style.color = s.running ? 'var(--cyan)' : 'var(--muted)';
   }catch(e){ gesturePill.textContent = '🖐 ...'; }
 }
+gesturePill.onclick = async () => {
+  gesturePill.textContent = '🖐 STARTING...';
+  try{
+    await fetch('/api/gesture', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'start'})});
+  }catch(e){}
+  setTimeout(refreshGesture, 2000);
+};
 refreshGesture();
 setInterval(refreshGesture, 5000);
 
