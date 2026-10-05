@@ -93,13 +93,13 @@ def load_config():
 
 
 def save_config(cfg):
+    """Save config. Returns (ok: bool, error: str)."""
     try:
         with open(_config_path(), "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2)
-        return True
+        return True, ""
     except Exception as e:
-        print(f"[config save failed: {e}]")
-        return False
+        return False, str(e)
 
 
 def get_api_key():
@@ -763,7 +763,8 @@ def run_web(port=8080):
             elif self.path == "/api/status":
                 send_json(self, {"brain": brain_connected(),
                                  "version": VERSION,
-                                 "has_key": bool(get_api_key())})
+                                 "has_key": bool(get_api_key()),
+                                 "sdk": genai_client is not None})
             else:
                 self.send_error(404)
 
@@ -780,10 +781,13 @@ def run_web(port=8080):
                     cfg["gemini_api_key"] = key
                 elif "gemini_api_key" in cfg:
                     del cfg["gemini_api_key"]
-                ok = save_config(cfg)
+                ok, err = save_config(cfg)
                 global _chat
                 _chat = None  # reconnect with the new key next time
-                send_json(self, {"ok": ok, "brain": brain_connected()})
+                send_json(self, {"ok": ok, "error": err,
+                                 "brain": brain_connected(),
+                                 "sdk": genai_client is not None,
+                                 "has_key": bool(get_api_key())})
                 return
             if self.path != "/api/command":
                 self.send_error(404)
