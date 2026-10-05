@@ -118,19 +118,30 @@ def do_action(name):
 
 
 def find_camera(max_index=3):
-    """Return first working camera index, or None. Some laptops use 1 or 2."""
+    """Return first working camera index, or None. Tries DirectShow first on Windows."""
+    global _CAM_BACKEND
     if not GESTURE_AVAILABLE:
         return None
-    for i in range(max_index):
-        try:
-            cap = cv2.VideoCapture(i)
-            ok = cap.isOpened()
-            cap.release()
-            if ok:
-                return i
-        except Exception:
-            continue
+    backends = []
+    if hasattr(cv2, "CAP_DSHOW"):
+        backends.append(cv2.CAP_DSHOW)  # Windows DirectShow: most reliable
+    backends.append(cv2.CAP_ANY)
+    for backend in backends:
+        for i in range(max_index):
+            try:
+                cap = cv2.VideoCapture(i, backend)
+                ok = cap.isOpened()
+                cap.release()
+                if ok:
+                    _CAM_BACKEND = backend
+                    return i
+            except Exception:
+                continue
+    _CAM_BACKEND = None
     return None
+
+
+_CAM_BACKEND = None
 
 
 def run(stop_event=None, cam_index=0):
@@ -138,7 +149,8 @@ def run(stop_event=None, cam_index=0):
     if not GESTURE_AVAILABLE:
         print("[gesture deps missing: pip install opencv-python mediapipe pyautogui]")
         return False
-    cap = cv2.VideoCapture(cam_index)
+    cap = cv2.VideoCapture(cam_index,
+                           _CAM_BACKEND if _CAM_BACKEND is not None else cv2.CAP_ANY)
     if not cap.isOpened():
         print("[camera not found]")
         return False
@@ -156,6 +168,11 @@ def run(stop_event=None, cam_index=0):
     frame_count = 0
     print("[CYBER AI gesture control ON] " + HELP)
     cv2.namedWindow("CYBER AI - Gesture Control", cv2.WINDOW_NORMAL)
+    try:
+        cv2.setWindowProperty("CYBER AI - Gesture Control",
+                              cv2.WND_PROP_TOPMOST, 1)
+    except Exception:
+        pass
 
     try:
         while True:
