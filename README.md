@@ -19,6 +19,15 @@ Your own CYBER AI for the laptop. **100% free — no card needed.**
 
 Camera starts automatically. Disable with `python jarvis.py --no-gesture`.
 
+**Camera not showing?**
+1. Use the **latest zip** and run `pip install -r requirements.txt` again
+   (camera needs `opencv-python`, `mediapipe`, `pyautogui`)
+2. Close other apps using the camera (Zoom, Meet...)
+3. In the web UI, **click the 🖐 pill** to retry — hover it to see the exact reason
+
+**Wake word:** say "CYBER" before commands. Don't want that?
+Open ⚙ Settings → uncheck *REQUIRE WAKE WORD* — then everything you say is a command.
+
 ## 🔑 API key — 3 easy ways (pick one)
 
 1. **`api_key.txt`** (easiest) — open it in Notepad, replace the placeholder
