@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-J.A.R.V.I.S. - Just A Rather Very Intelligent System (free DIY edition)
-A voice assistant for your Windows laptop. 100% free, no card needed.
+CYBER AI - free DIY voice + gesture assistant for Windows.
+100% free, no card needed.
 
 FREE stack:
   Voice in  -> SpeechRecognition, bilingual English + Sinhala (si-LK) auto-detect
+               Web UI: always-on mic with wake word "CYBER"
   Voice out -> pyttsx3 offline (English) + gTTS (Sinhala voice), auto-picked
+  Hands in  -> MediaPipe hand tracking, auto-started (Iron Man style)
   Brain     -> Google Gemini free tier (free key from aistudio.google.com)
                Works offline with built-in answers if no key is set.
 
-Run:  python jarvis.py            (beautiful web HUD - DEFAULT)
-      python jarvis.py --terminal (terminal mode, no pretty UI)
-      python jarvis.py --hud      (desktop cyber HUD window)
+Run:  python jarvis.py               (CYBER AI web HUD - DEFAULT, camera auto-on)
+      python jarvis.py --no-gesture  (web HUD without camera)
+      python jarvis.py --terminal    (terminal mode, no pretty UI)
+      python jarvis.py --hud         (desktop cyber HUD window)
+      python gesture.py              (hand tracking only)
 """
 
 import datetime
@@ -53,8 +57,8 @@ except ImportError:
     playsound = None
 
 # ------------------------------------------------------------------- settings
-ASSISTANT_NAME = "Jarvis"
-VERSION = "5.0.0"
+ASSISTANT_NAME = "CYBER AI"
+VERSION = "6.0.0"
 GEMINI_MODEL = "gemini-2.0-flash"   # fast + free tier friendly
 SILENT = os.environ.get("JARVIS_SILENT") == "1"   # for testing: no audio
 WEB_MODE = False                    # True when serving the web HUD
@@ -116,7 +120,7 @@ _recognizer = None
 _chat = None
 
 SYSTEM_PROMPT = (
-    "You are JARVIS, a witty and loyal AI assistant like in Iron Man. "
+    "You are CYBER AI, a witty and loyal AI assistant like Iron Man's JARVIS. "
     "You are fluent in both English and Sinhala - ALWAYS reply in the same "
     "language the user used. Keep replies short and conversational (1-3 "
     "sentences) unless the user asks for detail. Be helpful, a little "
@@ -302,12 +306,12 @@ def _get_chat():
 
 
 OFFLINE_ANSWERS = [
-    (r"\bwho are you\b", "I am JARVIS, your personal AI assistant. At your service."),
+    (r"\bwho are you\b", "I am CYBER AI, your personal AI assistant. At your service."),
     (r"\bhow are you\b", "Running at full capacity, sir. How can I help?"),
     (r"\bthank", "Always a pleasure."),
     (r"\b(hello|hi|hey)\b", "Hello! What can I do for you?"),
     (r"ආයුබෝවන්|හෙලෝ|හායි", "ආයුබෝවන්! මම JARVIS. මට මොනවගේ උදව්වක් කරන්නද?"),
-    (r"ඔයා කවුද|ඔබ කවුද", "මම JARVIS, ඔබේ පෞද්ගලික AI සහායකයා."),
+    (r"ඔයා කවුද|ඔබ කවුද", "මම CYBER AI, ඔබේ පෞද්ගලික AI සහායකයා."),
     (r"ස්තූතියි", "සතුටක්!"),
 ]
 
@@ -720,6 +724,54 @@ def run_hud():
     root.mainloop()
 
 
+# ------------------------------------------------------------ gesture control
+_gesture_thread = None
+_gesture_stop_event = None
+
+
+def gesture_running():
+    return _gesture_thread is not None and _gesture_thread.is_alive()
+
+
+def start_gesture_mode():
+    """Start Iron Man hand tracking in the background. True if running."""
+    global _gesture_thread, _gesture_stop_event
+    if gesture_running():
+        return True
+    try:
+        import gesture as gesture_mod
+    except Exception as e:
+        print(f"[gesture unavailable: {e}]")
+        return False
+    if not gesture_mod.GESTURE_AVAILABLE:
+        print("[gesture needs: pip install opencv-python mediapipe pyautogui]")
+        return False
+    try:
+        import cv2
+        probe = cv2.VideoCapture(0)
+        ok = probe.isOpened()
+        probe.release()
+        if not ok:
+            print("[gesture: no camera found]")
+            return False
+    except Exception as e:
+        print(f"[gesture camera probe failed: {e}]")
+        return False
+    import threading
+    _gesture_stop_event = threading.Event()
+    _gesture_thread = threading.Thread(
+        target=gesture_mod.run, args=(_gesture_stop_event,), daemon=True)
+    _gesture_thread.start()
+    print("[gesture control ON - camera active, always listening for hands]")
+    return True
+
+
+def stop_gesture_mode():
+    if _gesture_stop_event is not None:
+        _gesture_stop_event.set()
+    return True
+
+
 # ----------------------------------------------------------------- web server
 def run_web(port=8080):
     """Serve the beautiful web HUD on localhost. Browser handles voice."""
@@ -769,6 +821,19 @@ def run_web(port=8080):
                 self.send_error(404)
 
         def do_POST(self):
+            if self.path == "/api/gesture":
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                    data = json.loads(self.rfile.read(length) or b"{}")
+                except Exception:
+                    data = {}
+                action = str(data.get("action", "status"))
+                if action == "start":
+                    start_gesture_mode()
+                elif action == "stop":
+                    stop_gesture_mode()
+                send_json(self, {"running": gesture_running()})
+                return
             if self.path == "/api/config":
                 try:
                     length = int(self.headers.get("Content-Length", 0))
@@ -820,10 +885,15 @@ def run_web(port=8080):
 
     url = f"http://127.0.0.1:{port}"
     print("=" * 56)
-    print("  J.A.R.V.I.S. web HUD is running!")
+    print("  CYBER AI web HUD is running!")
     print(f"  Open in your browser: {url}")
     print("  (opening automatically...)")
     print("=" * 56)
+    # camera hand tracking: always on unless disabled
+    if "--no-gesture" not in sys.argv:
+        start_gesture_mode()
+    else:
+        print("[gesture control disabled by --no-gesture]")
     try:
         webbrowser.open(url)
     except Exception as e:
