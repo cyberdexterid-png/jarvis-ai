@@ -186,7 +186,7 @@ footer .warn{color:#ffb347}
       <div class="meter"><div class="m-top"><span>VOICE ENGINE</span><b id="mVoice">READY</b></div><div class="m-bar"><i id="mVoiceBar" style="width:100%"></i></div></div>
       <div class="statgrid">
         <div><b id="sResp">-- ms</b><span>RESPONSE</span></div>
-        <div><b id="sVer">7.8</b><span>CORE BUILD</span></div>
+        <div><b id="sVer">7.9</b><span>CORE BUILD</span></div>
         <div><b>EN / SI</b><span>LANGUAGE</span></div>
         <div><b>LOCAL</b><span>SESSION</span></div>
       </div>
@@ -361,6 +361,8 @@ function speakReply(t){
   const done = () => {
     faceState.speaking = false;
     setVoiceState(recOn ? 'LISTENING' : 'STANDBY');
+    // mic back on now that WE finished talking (no echo loop)
+    if(micWanted && !recOn) setTimeout(ensureMic, 400);
   };
   if(!voiceReplyOn){ done(); return; }
   try{
@@ -372,7 +374,13 @@ function speakReply(t){
     if(v){ u.voice = v; u.lang = v.lang; }
     else u.lang = isSi ? 'si-LK' : 'en-US';
     u.rate = 0.95;
-    u.onstart = () => { faceState.speaking = true; setVoiceState('SPEAKING'); };
+    u.onstart = () => {
+      faceState.speaking = true;
+      setVoiceState('SPEAKING');
+      // mute the mic while WE talk — otherwise it hears itself and replies
+      // to its own voice in a loop
+      try{ if(rec) rec.stop(); }catch(e){}
+    };
     u.onend = done;
     u.onerror = done;
     speechSynthesis.cancel();
@@ -436,6 +444,9 @@ wakeToggle.onchange = e => {
 };
 
 function handleVoice(t){
+  // safety: ignore anything the mic caught while WE were speaking
+  // (prevents the AI replying to its own voice)
+  if(faceState.speaking) return;
   const ticker = document.getElementById('heardTicker');
   ticker.textContent = '🎤 heard: "' + t + '"';
   let cmd = t;
@@ -482,7 +493,9 @@ function ensureMic(){
   rec.onend = () => {
     recOn = false; updateMicUI();
     if(!faceState.speaking) setVoiceState('STANDBY');
-    if(micWanted) setTimeout(ensureMic, 600);  // auto-revive forever
+    // auto-revive forever — but NOT while WE are speaking (speakReply's
+    // done() restarts the mic when TTS finishes)
+    if(micWanted && !faceState.speaking) setTimeout(ensureMic, 600);
   };
   rec.onerror = ev => {
     if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){
