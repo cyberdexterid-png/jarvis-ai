@@ -11,11 +11,18 @@ CYBER AI gesture control - Iron Man style hand tracking.
 
 Press Q in the camera window (or stop from the web UI) to quit.
 
+Works with BOTH MediaPipe APIs:
+  - new tasks API (mediapipe >= 0.10.14, mp.tasks.vision.HandLandmarker)
+  - legacy solutions API (older mediapipe, mp.solutions.hands)
+
 Needs: pip install opencv-python mediapipe pyautogui
 """
 
 import math
+import os
+import threading as _threading
 import time
+import urllib.request
 
 try:
     import cv2
@@ -37,8 +44,22 @@ HELP = (
     "2 fingers=vol+ | 3 fingers=vol- | Palm=mute | Q=quit"
 )
 
+# one-time download for the new tasks API (~30MB, cached next to this file)
+_TASK_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/"
+                   "hand_landmarker/hand_landmarker/float16/1/"
+                   "hand_landmarker.task")
+
+# standard MediaPipe hand connections (21 bones) for manual drawing
+_HAND_CONNECTIONS = (
+    (0, 1), (1, 2), (2, 3), (3, 4),
+    (0, 5), (5, 6), (6, 7), (7, 8),
+    (5, 9), (9, 10), (10, 11), (11, 12),
+    (9, 13), (13, 14), (14, 15), (15, 16),
+    (13, 17), (17, 18), (18, 19), (19, 20),
+    (0, 17),
+)
+
 # latest camera frame for the web UI preview (thread-safe)
-import threading as _threading
 _frame_lock = _threading.Lock()
 latest_frame = None
 
@@ -57,7 +78,9 @@ def _publish_frame(frame):
 
 
 def _landmarks(hand_lms):
-    return [(p.x, p.y) for p in hand_lms.landmark]
+    """Normalized (x, y) list — accepts solutions or tasks landmark objects."""
+    pts = hand_lms.landmark if hasattr(hand_lms, "landmark") else hand_lms
+    return [(p.x, p.y) for p in pts]
 
 
 def fingers_up(pts):
@@ -105,7 +128,6 @@ def _press_vk(vk):
 
 def do_action(name):
     """Fire a PC action for a gesture. Windows media/volume keys."""
-    import os
     if os.name != "nt":
         print(f"[gesture:{name}] (Windows only)")
         return
@@ -144,10 +166,67 @@ def find_camera(max_index=3):
 _CAM_BACKEND = None
 
 
+def _ensure_task_model():
+    """Download the hand-landmarker model once, cache next to this file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, "hand_landmarker.task")
+    if os.path.exists(path) and os.path.getsize(path) > 1_000_000:
+        return path
+    print("[downloading hand_landmarker.task (~30MB, one time)...]")
+    urllib.request.urlretrieve(_TASK_MODEL_URL, path)
+    return path
+
+
+def _create_tracker():
+    """Return (kind, tracker) — 'tasks' (new API) or 'solutions' (legacy)."""
+    # --- new tasks API (mediapipe >= 0.10.14) ---
+    try:
+        from mediapipe.tasks import python as mp_tasks
+        from mediapipe.tasks.python import vision as mp_vision
+        model_path = _ensure_task_model()
+        options = mp_vision.HandLandmarkerOptions(
+            base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
+            running_mode=mp_vision.RunningMode.VIDEO,
+            num_hands=2,
+            min_hand_detection_confidence=0.7,
+            min_hand_presence_confidence=0.7,
+            min_tracking_confidence=0.7,
+        )
+        tracker = mp_vision.HandLandmarker.create_from_options(options)
+        print("[hand tracking: tasks API]")
+        return "tasks", tracker
+    except Exception as e:
+        print(f"[tasks API unavailable ({e}), trying legacy API]")
+    # --- legacy solutions API (older mediapipe) ---
+    try:
+        tracker = mp.solutions.hands.Hands(
+            max_num_hands=2,
+            min_detection_confidence=0.7,
+            min_tracking_confidence=0.7)
+        print("[hand tracking: legacy solutions API]")
+        return "solutions", tracker
+    except Exception as e:
+        print(f"[no hand-tracking backend: {e}]")
+        return None, None
+
+
+def _draw_hand(frame, pts):
+    """Draw landmark dots + bones with plain OpenCV (no drawing_utils needed)."""
+    h, w = frame.shape[:2]
+    xy = [(int(x * w), int(y * h)) for x, y in pts]
+    for a, b in _HAND_CONNECTIONS:
+        cv2.line(frame, xy[a], xy[b], (0, 255, 65), 2)
+    for x, y in xy:
+        cv2.circle(frame, (x, y), 4, (0, 255, 65), -1)
+
+
 def run(stop_event=None, cam_index=0):
     """Main loop. Returns True if it ran, False if camera/deps missing."""
     if not GESTURE_AVAILABLE:
         print("[gesture deps missing: pip install opencv-python mediapipe pyautogui]")
+        return False
+    kind, tracker = _create_tracker()
+    if tracker is None:
         return False
     cap = cv2.VideoCapture(cam_index,
                            _CAM_BACKEND if _CAM_BACKEND is not None else cv2.CAP_ANY)
@@ -157,11 +236,6 @@ def run(stop_event=None, cam_index=0):
 
     screen_w, screen_h = pyautogui.size()
     cur_x, cur_y = screen_w / 2, screen_h / 2
-    hands = mp.solutions.hands.Hands(
-        max_num_hands=2,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.7)
-    draw = mp.solutions.drawing_utils
 
     last_click = 0.0
     last_action = 0.0
@@ -183,14 +257,23 @@ def run(stop_event=None, cam_index=0):
                 break
             frame = cv2.flip(frame, 1)  # mirror view
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            res = hands.process(rgb)
-            label = "no hand"
 
-            if res.multi_hand_landmarks:
-                hand = res.multi_hand_landmarks[0]  # primary hand
-                draw.draw_landmarks(frame, hand,
-                                    mp.solutions.hands.HAND_CONNECTIONS)
-                pts = _landmarks(hand)
+            hand_lms = None
+            if kind == "tasks":
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                res = tracker.detect_for_video(
+                    mp_image, int(time.time() * 1000))
+                if res.hand_landmarks:
+                    hand_lms = res.hand_landmarks[0]
+            else:
+                res = tracker.process(rgb)
+                if res.multi_hand_landmarks:
+                    hand_lms = res.multi_hand_landmarks[0]
+
+            label = "no hand"
+            if hand_lms is not None:
+                pts = _landmarks(hand_lms)
+                _draw_hand(frame, pts)
                 gesture, _ = detect_gesture(pts)
                 label = gesture
                 now = time.time()
@@ -242,6 +325,10 @@ def run(stop_event=None, cam_index=0):
     finally:
         cap.release()
         cv2.destroyAllWindows()
+        try:
+            tracker.close()
+        except Exception:
+            pass
         print("[CYBER AI gesture control OFF]")
     return True
 
