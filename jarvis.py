@@ -58,9 +58,10 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "7.4.0"
+VERSION = "7.5.0"
 GEMINI_MODEL = "gemini-2.5-flash"   # preferred; auto-falls back to any live model
 _GEMINI_MODEL_RESOLVED = None
+_GEMINI_DEAD_MODELS = set()  # models that 404'd this session — never pick again
 SILENT = os.environ.get("JARVIS_SILENT") == "1"   # for testing: no audio
 WEB_MODE = False                    # True when serving the web HUD
 _web_replies = []
@@ -256,26 +257,47 @@ _last_brain_error = ""
 
 
 def _resolve_model(api_key):
-    """Pick a working model: prefer GEMINI_MODEL, else first live flash/lite model.
+    """Pick a WORKING model: prefer GEMINI_MODEL, else first live flash/lite.
 
-    Google retires models regularly — this keeps CYBER AI working forever.
+    Google retires models regularly, and the models-list can include names
+    that 404 on actual use — so every candidate is proven with a tiny real
+    call before we commit to it. Dead models are blacklisted for the session.
     """
     global _GEMINI_MODEL_RESOLVED
-    if _GEMINI_MODEL_RESOLVED:
+    if (_GEMINI_MODEL_RESOLVED
+            and _GEMINI_MODEL_RESOLVED not in _GEMINI_DEAD_MODELS):
         return _GEMINI_MODEL_RESOLVED
     try:
         client = genai_client.Client(api_key=api_key)
         names = [m.name.replace("models/", "")
                  for m in client.models.list() if m.name]
-        if GEMINI_MODEL in names:
-            _GEMINI_MODEL_RESOLVED = GEMINI_MODEL
-        else:
-            pick = next((n for n in names
-                         if "flash" in n.lower() or "lite" in n.lower()),
-                        names[0] if names else GEMINI_MODEL)
-            _GEMINI_MODEL_RESOLVED = pick
-            if pick != GEMINI_MODEL:
-                print(f"[Gemini model {GEMINI_MODEL} unavailable, using {pick}]")
+        cands = []
+        if GEMINI_MODEL in names and GEMINI_MODEL not in _GEMINI_DEAD_MODELS:
+            cands.append(GEMINI_MODEL)
+        cands += [n for n in names
+                  if n not in _GEMINI_DEAD_MODELS and n not in cands
+                  and ("flash" in n.lower() or "lite" in n.lower())]
+        cands += [n for n in names
+                  if n not in _GEMINI_DEAD_MODELS and n not in cands]
+        for pick in cands:
+            try:
+                client.models.generate_content(
+                    model=pick, contents="Reply with the single word: ok")
+                _GEMINI_MODEL_RESOLVED = pick
+                if pick != GEMINI_MODEL:
+                    print(f"[Gemini using live model {pick}]")
+                return pick
+            except Exception as e:
+                low = str(e).lower()
+                if ("not found" in low or "no longer available" in low
+                        or "404" in low or "retired" in low):
+                    _GEMINI_DEAD_MODELS.add(pick)
+                    print(f"[Gemini model {pick} dead on use, trying next]")
+                    continue
+                # other error (quota etc.) — keep model, let caller report it
+                _GEMINI_MODEL_RESOLVED = pick
+                return pick
+        _GEMINI_MODEL_RESOLVED = GEMINI_MODEL
     except Exception as e:
         print(f"[model auto-detect failed: {e}]")
         _GEMINI_MODEL_RESOLVED = GEMINI_MODEL
@@ -290,8 +312,11 @@ def _friendly_gemini_error(e):
         return "API key not valid — grab a fresh one from aistudio.google.com/apikey"
     if "quota" in low:
         return "API quota exceeded — try again later or use a new key"
-    if "no longer available" in low or ("model" in low and "not found" in low):
-        return "that Gemini model was retired — restart CYBER AI to auto-pick a live one"
+    if "no longer available" in low or (("model" in low and "not found" in low)
+            or "retired" in low):
+        return "that Gemini model was retired — auto-switching to a live one, ask again"
+    if "has been closed" in low:
+        return "connection dropped — reconnecting, ask again"
     if "permission" in low or "denied" in low or "403" in low:
         return "API access denied for this key — check AI Studio settings"
     if "timeout" in low or "unreachable" in low or "failed to connect" in low:
@@ -519,7 +544,7 @@ OFFLINE_ANSWERS = [
 
 def ask_brain(question):
     """Ask the active AI provider; fall back to small offline answers if no key."""
-    global _last_brain_error
+    global _last_brain_error, _chat, _GEMINI_MODEL_RESOLVED
     provider = get_provider()
     if provider == "openai":
         api_key = get_api_key("openai")
@@ -533,17 +558,33 @@ def ask_brain(question):
                 return ("⚠️ OpenAI API error: " + _last_brain_error +
                         " — check your key in ⚙ Settings → API.")
     else:
-        chat = _get_chat()
-        if chat is not None:
-            try:
-                resp = chat.send_message(question)
-                _last_brain_error = ""
-                return resp.text.strip()
-            except Exception as e:
-                _last_brain_error = _friendly_gemini_error(e)
-                print(f"[Gemini error: {e}]")
-                return ("⚠️ Gemini API error: " + _last_brain_error +
-                        " — check your key in ⚙ Settings → API.")
+        # one automatic retry: if the model died or the client closed,
+        # drop the caches and re-resolve to the next live model
+        for attempt in range(2):
+            chat = _get_chat()
+            if chat is not None:
+                try:
+                    resp = chat.send_message(question)
+                    _last_brain_error = ""
+                    return resp.text.strip()
+                except Exception as e:
+                    low = str(e).lower()
+                    dead = ("retired" in low or "no longer available" in low
+                            or "not found" in low or "has been closed" in low
+                            or "404" in low)
+                    if dead:
+                        if _GEMINI_MODEL_RESOLVED:
+                            _GEMINI_DEAD_MODELS.add(_GEMINI_MODEL_RESOLVED)
+                            print(f"[Gemini model {_GEMINI_MODEL_RESOLVED} died, self-healing]")
+                        _GEMINI_MODEL_RESOLVED = None
+                        _chat = None
+                        if attempt == 0:
+                            continue  # retry once with next live model
+                    _last_brain_error = _friendly_gemini_error(e)
+                    print(f"[Gemini error: {e}]")
+                    return ("⚠️ Gemini API error: " + _last_brain_error +
+                            " — check your key in ⚙ Settings → API.")
+            break
     for pattern, answer in OFFLINE_ANSWERS:
         if re.search(pattern, question, re.IGNORECASE):
             return answer
