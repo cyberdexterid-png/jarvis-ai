@@ -58,7 +58,7 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "7.6.0"
+VERSION = "7.7.0"
 GEMINI_MODEL = "gemini-2.5-flash"   # preferred; auto-falls back to any live model
 _GEMINI_MODEL_RESOLVED = None
 _GEMINI_DEAD_MODELS = set()  # models that 404'd this session — never pick again
@@ -262,7 +262,15 @@ def _resolve_model(api_key):
     Google retires models regularly, and the models-list can include names
     that 404 on actual use — so every candidate is proven with a tiny real
     call before we commit to it. Dead models are blacklisted for the session.
+    Non-chat models (image/tts/embed) are tried last.
     """
+    def _model_score(n):
+        low = n.lower()
+        if any(x in low for x in ("image", "tts", "embed", "vision", "aqa")):
+            return 2  # not a chat model — last resort
+        if "flash" in low or "lite" in low:
+            return 0  # preferred chat models
+        return 1
     global _GEMINI_MODEL_RESOLVED
     if (_GEMINI_MODEL_RESOLVED
             and _GEMINI_MODEL_RESOLVED not in _GEMINI_DEAD_MODELS):
@@ -274,11 +282,11 @@ def _resolve_model(api_key):
         cands = []
         if GEMINI_MODEL in names and GEMINI_MODEL not in _GEMINI_DEAD_MODELS:
             cands.append(GEMINI_MODEL)
-        cands += [n for n in names
-                  if n not in _GEMINI_DEAD_MODELS and n not in cands
-                  and ("flash" in n.lower() or "lite" in n.lower())]
-        cands += [n for n in names
-                  if n not in _GEMINI_DEAD_MODELS and n not in cands]
+        rest = sorted(
+            (n for n in names
+             if n not in _GEMINI_DEAD_MODELS and n not in cands),
+            key=_model_score)
+        cands += rest
         for pick in cands:
             try:
                 client.models.generate_content(
@@ -310,8 +318,12 @@ def _friendly_gemini_error(e):
     low = msg.lower()
     if "api key not valid" in low or "api_key_invalid" in low or "invalid api key" in low:
         return "API key not valid — grab a fresh one from aistudio.google.com/apikey"
-    if "quota" in low:
-        return "API quota exceeded — try again later or use a new key"
+    if "quota" in low or "429" in low or "resource_exhausted" in low:
+        m = re.search(r"retry in ([\dhms.]+)", low)
+        wait = f" — retry in {m.group(1)}" if m else ""
+        return f"API quota exhausted{wait} — try again later or use a fresh key"
+    if "503" in low or "unavailable" in low or "high demand" in low:
+        return "Google's servers are overloaded right now — try again in a bit"
     if "no longer available" in low or (("model" in low and "not found" in low)
             or "retired" in low):
         return "that Gemini model was retired — auto-switching to a live one, ask again"
