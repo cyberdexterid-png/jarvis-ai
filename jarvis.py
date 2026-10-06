@@ -58,7 +58,7 @@ except ImportError:
 
 # ------------------------------------------------------------------- settings
 ASSISTANT_NAME = "CYBER AI"
-VERSION = "7.7.0"
+VERSION = "7.8.0"
 GEMINI_MODEL = "gemini-2.5-flash"   # preferred; auto-falls back to any live model
 _GEMINI_MODEL_RESOLVED = None
 _GEMINI_DEAD_MODELS = set()  # models that 404'd this session — never pick again
@@ -355,6 +355,7 @@ def test_gemini_key(api_key):
 _engine = None
 _recognizer = None
 _chat = None
+_genai_client = None  # keep a ref so GC never closes the chat's HTTP client
 
 SYSTEM_PROMPT = (
     "You are CYBER AI, a witty and loyal AI assistant like Iron Man's JARVIS. "
@@ -523,16 +524,19 @@ def listen():
 # ---------------------------------------------------------------------- brain
 def _get_chat():
     """Lazy Gemini chat session (new google-genai SDK). None if unavailable."""
-    global _chat
+    global _chat, _genai_client
     if _chat is not None:
         return _chat
     api_key = get_api_key()
     if not api_key or genai_client is None:
         return None
     try:
-        client = genai_client.Client(api_key=api_key)
+        # NOTE: client MUST stay referenced globally — if it gets garbage
+        # collected its HTTP transport closes and send_message() fails with
+        # "Cannot send a request, as the client has been closed."
+        _genai_client = genai_client.Client(api_key=api_key)
         model = _resolve_model(api_key)
-        _chat = client.chats.create(
+        _chat = _genai_client.chats.create(
             model=model,
             config=genai_types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT),
@@ -540,6 +544,7 @@ def _get_chat():
         return _chat
     except Exception as e:
         print(f"[Gemini setup failed: {e}]")
+        _genai_client = None
         return None
 
 
@@ -556,7 +561,7 @@ OFFLINE_ANSWERS = [
 
 def ask_brain(question):
     """Ask the active AI provider; fall back to small offline answers if no key."""
-    global _last_brain_error, _chat, _GEMINI_MODEL_RESOLVED
+    global _last_brain_error, _chat, _genai_client, _GEMINI_MODEL_RESOLVED
     provider = get_provider()
     if provider == "openai":
         api_key = get_api_key("openai")
@@ -570,8 +575,9 @@ def ask_brain(question):
                 return ("⚠️ OpenAI API error: " + _last_brain_error +
                         " — check your key in ⚙ Settings → API.")
     else:
-        # one automatic retry: if the model died or the client closed,
-        # drop the caches and re-resolve to the next live model
+        # one automatic retry: if the model died, blacklist it and try the
+        # next live one; if the client just dropped, rebuild without
+        # blacklisting the (healthy) model
         for attempt in range(2):
             chat = _get_chat()
             if chat is not None:
@@ -581,17 +587,21 @@ def ask_brain(question):
                     return resp.text.strip()
                 except Exception as e:
                     low = str(e).lower()
-                    dead = ("retired" in low or "no longer available" in low
-                            or "not found" in low or "has been closed" in low
-                            or "404" in low)
-                    if dead:
-                        if _GEMINI_MODEL_RESOLVED:
-                            _GEMINI_DEAD_MODELS.add(_GEMINI_MODEL_RESOLVED)
-                            print(f"[Gemini model {_GEMINI_MODEL_RESOLVED} died, self-healing]")
-                        _GEMINI_MODEL_RESOLVED = None
+                    client_died = "has been closed" in low
+                    model_died = ("retired" in low or "no longer available" in low
+                                  or "not found" in low or "404" in low)
+                    if client_died or model_died:
+                        if model_died:
+                            if _GEMINI_MODEL_RESOLVED:
+                                _GEMINI_DEAD_MODELS.add(_GEMINI_MODEL_RESOLVED)
+                                print(f"[Gemini model {_GEMINI_MODEL_RESOLVED} died, self-healing]")
+                            _GEMINI_MODEL_RESOLVED = None
+                        else:
+                            print("[Gemini client dropped, rebuilding]")
                         _chat = None
+                        _genai_client = None
                         if attempt == 0:
-                            continue  # retry once with next live model
+                            continue  # retry once
                     _last_brain_error = _friendly_gemini_error(e)
                     print(f"[Gemini error: {e}]")
                     return ("⚠️ Gemini API error: " + _last_brain_error +
@@ -1176,8 +1186,9 @@ def run_web(port=8080):
                     elif "openai_api_key" in cfg:
                         del cfg["openai_api_key"]
                 ok, err = save_config(cfg)
-                global _chat, _GEMINI_MODEL_RESOLVED
+                global _chat, _genai_client, _GEMINI_MODEL_RESOLVED
                 _chat = None  # reconnect with the new key next time
+                _genai_client = None
                 _GEMINI_MODEL_RESOLVED = None  # re-detect model for the new key
                 active = cfg.get("provider", "gemini")
                 key_now = get_api_key(active)
